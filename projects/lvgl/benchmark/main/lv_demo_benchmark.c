@@ -765,7 +765,7 @@ static void monitor_cb(lv_disp_drv_t * drv, uint32_t time, uint32_t px)
         scenes[scene_act].time_sum_normal += time;
     }
 
-    //    lv_obj_invalidate(lv_scr_act());
+       lv_obj_invalidate(lv_scr_act());
 }
 
 static void generate_report(void)

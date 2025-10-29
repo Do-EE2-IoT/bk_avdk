@@ -23,8 +23,8 @@ extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 
 const lcd_open_t lcd_open =
 {
-    .device_ppi = PPI_480X480,
-    .device_name = "st7701s",
+    .device_ppi = PPI_800X480,
+    .device_name = "h050iwv",
 };
 
 void cli_benchmark_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
@@ -133,6 +133,7 @@ int main(void)
 #endif
     bk_init();
     media_service_init();
+    BK_LOGI("example", "test log");
 
 #if (CONFIG_SYS_CPU0)
     benchmark_init();

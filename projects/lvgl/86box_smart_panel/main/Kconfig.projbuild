@@ -5,7 +5,7 @@ menu "LVGL 86box Smart Panel Configuration"
 
 	choice 86BOX_SMART_PANEL_VERSION
 		prompt "Select 86box Smart Panel Language Version"
-		default 86BOX_SMART_PANEL_VERSION_CN
+		default 86BOX_SMART_PANEL_VERSION_EN
 
 		config 86BOX_SMART_PANEL_VERSION_CN
 			bool "Select Chinese Version"

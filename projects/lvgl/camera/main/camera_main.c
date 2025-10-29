@@ -30,8 +30,8 @@ static bool lcd_jdec_is_first_open = true;
 
 const lcd_open_t lcd_open =
 {
-    .device_ppi = PPI_480X854,
-    .device_name = "st7701sn",
+    .device_ppi = PPI_800X480,
+    .device_name = "h050iwv",
 };
 
 media_camera_device_t camera_device = {

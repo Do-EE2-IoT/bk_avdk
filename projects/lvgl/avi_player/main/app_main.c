@@ -30,8 +30,8 @@ extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 
 const lcd_open_t lcd_open =
 {
-    .device_ppi = PPI_160X160,
-    .device_name = "gc9d01",
+    .device_ppi = PPI_800X480,
+    .device_name = "h050iwv",
 };
 
 void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
