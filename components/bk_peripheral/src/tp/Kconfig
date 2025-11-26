@@ -23,4 +23,9 @@ menu "TP"
 		depends on TP
 		bool "Enable TP_CST816D API"
 		default n
+
+	config TP_CST836U
+		depends on TP
+		bool "Enable TP_CST836U API"
+		default n	
 endmenu

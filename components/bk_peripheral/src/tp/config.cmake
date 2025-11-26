@@ -24,3 +24,7 @@ endif()
 if (CONFIG_TP_CST816D)
 	list(APPEND TP_DEVICE_FILES ${TP_PATH}/tp_cst816d.c)
 endif()
+
+if (CONFIG_TP_CST836U)
+	list(APPEND TP_DEVICE_FILES ${TP_PATH}/tp_cst836u.c)
+endif()

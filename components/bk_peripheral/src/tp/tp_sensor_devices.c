@@ -41,6 +41,10 @@ const tp_sensor_config_t *tp_sensor_configs[] =
 #if CONFIG_TP_CST816D
 	&tp_sensor_cst816d,
 #endif
+
+#if CONFIG_TP_CST836U
+	&tp_sensor_cst836u,
+#endif
 };
 
 void tp_sensor_devices_init(void)
