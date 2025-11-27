@@ -32,7 +32,7 @@ extern void bk_mem_dump_ex(const char *title, unsigned char *data, uint32_t data
 // macro define
 #define CST836U_WRITE_ADDRESS     (0x2A)
 #define CST836U_READ_ADDRESS      (0x2B)
-#define CST836U_PRODUCT_ID_CODE   (0xB6)
+#define CST836U_PRODUCT_ID_CODE   (0xDE) // 0xB6
 
 #define CST836U_ADDR_LEN          (1)
 #define CST836U_REG_LEN           (1)
@@ -48,7 +48,7 @@ extern void bk_mem_dump_ex(const char *title, unsigned char *data, uint32_t data
 #define CST836U_XPOSL             (0X04)
 #define CST836U_YPOSH             (0X05)
 #define CST836U_YPOSL             (0X06)
-#define CST836U_TP_CHIP_ID_REG    (0xA7)
+#define CST836U_TP_CHIP_ID_REG    (0xAC) // 0xA7
 #define CST836U_MOTIONMASK        (0xEC)
 #define CST836U_PUSHTIMER         (0xEE)
 #define CST836U_AUTOSLEEEPTIME    (0xF9)
@@ -57,7 +57,7 @@ extern void bk_mem_dump_ex(const char *title, unsigned char *data, uint32_t data
 #define CST836U_LONGPRESSTIME     (0xFC)
 #define CST836U_DISAUTOSLEEP      (0xFE)
 
-#define CST836U_REGS_DEBUG_EN (1)
+#define CST836U_REGS_DEBUG_EN (0)
 
 #define SENSOR_I2C_READ(reg, buff, len)  cb->read_uint8((CST836U_WRITE_ADDRESS >> 1), reg, buff, len)
 #define SENSOR_I2C_WRITE(reg, buff, len)  cb->write_uint8((CST836U_WRITE_ADDRESS >> 1), reg, buff, len)
@@ -108,25 +108,6 @@ int cst836u_init(const tp_i2c_callback_t *cb, tp_sensor_user_config_t *config)
     return BK_OK;
 }
 
-int cst836u_read_status(const tp_i2c_callback_t *cb, uint8_t *status)
-{
-    if ((NULL == cb) || (NULL == status))
-    {
-        os_printf("%s, pointer is null!\r\n", __func__);
-        return BK_FAIL;
-    }
-
-    if (BK_OK != SENSOR_I2C_READ(CST836U_STATUS, (uint8_t *)(status), 1))
-    {
-        os_printf("%s, read status reg fail!\r\n", __func__);
-        return BK_FAIL;
-    }
-
-    os_printf("%s, status=0x%02X\r\n", __func__, *status);
-
-    return BK_OK;
-}
-
 // cst836u get tp info.
 void cst836u_read_point(uint8_t *input_buff, void *buf, uint8_t num)
 {
@@ -149,6 +130,8 @@ void cst836u_read_point(uint8_t *input_buff, void *buf, uint8_t num)
         input_x = ((uint16_t)(read_buf[off_set + 3] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 4]);    /* x */
         input_y = ((uint16_t)(read_buf[off_set + 5] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 6]);  /* y */
         input_w = 0;
+
+        os_printf("%s: touch %d, event_flag=0x%02X, x=%d, y=%d\r\n", __func__, read_index, event_flag, input_x, input_y);
 
         if (event_flag == 0x00)
         {
@@ -187,24 +170,25 @@ int cst836u_read_tp_info(const tp_i2c_callback_t *cb, uint8_t max_num, uint8_t *
     }
 
     int ret = BK_OK;
-    uint8_t gesture_status = 0;
-    uint8_t finger_status = 0;
-    uint8_t temp_status = 0;
+    // uint8_t gesture_status = 0;
+    // uint8_t finger_status = 0;
+    // uint8_t temp_status = 0;
 
     os_memset(read_buff, 0x00, sizeof(read_buff));
-    if (BK_OK != SENSOR_I2C_READ(CST836U_STATUS, (uint8_t *)read_buff, sizeof(read_buff)))
+    // if (BK_OK != SENSOR_I2C_READ(CST836U_STATUS, (uint8_t *)read_buff, sizeof(read_buff)))
+    if (BK_OK != SENSOR_I2C_READ(0x02, (uint8_t *)read_buff, sizeof(read_buff)))
     {
         os_printf("%s, read tp info fail!\r\n", __func__);
         ret = BK_FAIL;
         goto exit_;
     }
 
-    gesture_status = read_buff[1];
-    finger_status = read_buff[2];
-    temp_status = read_buff[3];
+    // gesture_status = read_buff[1];
+    // finger_status = read_buff[2];
+    // temp_status = read_buff[3];
 
     // original registers datas.
-    os_printf("%s, gesture_status=0x%02X, finger_status=0x%02X, temp_status=0x%02X\r\n", __func__, gesture_status, finger_status, temp_status >> 4);
+    // os_printf("%s, gesture_status=0x%02X, finger_status=0x%02X, temp_status=0x%02X\r\n", __func__, gesture_status, finger_status, temp_status >> 4);
 
 #if (CST836U_REGS_DEBUG_EN > 0)
     bk_mem_dump_ex("cst836u", (unsigned char *)(read_buff), sizeof(read_buff));
@@ -221,7 +205,7 @@ const tp_sensor_config_t tp_sensor_cst836u =
 {
 	.name = "cst836u",
 	// default config
-	.def_ppi = PPI_400X400,
+	.def_ppi = PPI_480X480,
 	.def_int_type = TP_INT_TYPE_FALLING_EDGE,
 	.def_refresh_rate = 10,
 	.def_tp_num = 2,
@@ -232,5 +216,3 @@ const tp_sensor_config_t tp_sensor_cst836u =
 	.init = cst836u_init,
 	.read_tp_info = cst836u_read_tp_info,
 };
-
-

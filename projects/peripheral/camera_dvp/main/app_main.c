@@ -42,9 +42,9 @@ media_camera_device_t camera_device = {
 	.type = DVP_CAMERA,
 	.mode = JPEG_MODE,
 	.fmt = PIXEL_FMT_JPEG,
-	.info.fps = FPS30,
-	.info.resolution.width = 640,
-	.info.resolution.height = 480,
+	.info.fps = FPS20,
+	.info.resolution.width = 1024,
+	.info.resolution.height = 600,
 };
 
 static void start_sending_data(void) {

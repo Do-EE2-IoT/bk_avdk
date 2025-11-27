@@ -911,7 +911,7 @@ const uint8_t sensor_gc2145_SVGA_800_600_table[][2] =
     {0xa2, 0x23},
 };
 */
-/*
+
 const uint8_t sensor_gc2145_1024_600_table[][2] =
 {
     {0xfe, 0x00},
@@ -957,7 +957,6 @@ const uint8_t sensor_gc2145_1024_600_table[][2] =
     {0xa2, 0x23},
 
 };
-*/
 
 const uint8_t sensor_gc2145_1280_720_table[][2] =
 {
@@ -1462,6 +1461,22 @@ int gc2145_set_ppi(media_ppi_t ppi)
 		}
 		break;
 
+		case PPI_1024X600:
+		{
+			size = sizeof(sensor_gc2145_1024_600_table) / 2;
+
+			for (i = 0; i < size; i++)
+			{
+				SENSOR_I2C_WRITE(sensor_gc2145_1024_600_table[i][0],
+				                 sensor_gc2145_1024_600_table[i][1]);
+
+				gc2145_read_register(sensor_gc2145_1024_600_table[i][0],
+				                     sensor_gc2145_1024_600_table[i][1]);
+			}
+			ret = 0;
+		}
+		break;
+
 		case PPI_1280X720:
 		{
 			size = sizeof(sensor_gc2145_1280_720_60M_table) / 2;
@@ -1535,6 +1550,22 @@ int gc2145_set_ppi(media_ppi_t ppi)
 		}
 		break;
 
+		case PPI_1024X600:
+		{
+			size = sizeof(sensor_gc2145_1024_600_table) / 2;
+
+			for (i = 0; i < size; i++)
+			{
+				SENSOR_I2C_WRITE(sensor_gc2145_1024_600_table[i][0],
+				                 sensor_gc2145_1024_600_table[i][1]);
+
+				gc2145_read_register(sensor_gc2145_1024_600_table[i][0],
+				                     sensor_gc2145_1024_600_table[i][1]);
+			}
+			ret = 0;
+		}
+		break;
+
 		case PPI_1280X720:
 		{
 			size = sizeof(sensor_gc2145_1280_720_table) / 2;
@@ -1558,6 +1589,16 @@ int gc2145_set_ppi(media_ppi_t ppi)
 
 	}
 #endif
+
+	if (ret == 0)
+	{
+		uint8_t w_h = 0, w_l = 0;
+		uint16_t w = 0;
+		SENSOR_I2C_READ(0x97, &w_h);
+		SENSOR_I2C_READ(0x98, &w_l);
+		w = (w_h << 8) | w_l;
+		LOGI("%s: sensor width registers 0x97/0x98 = 0x%04x (%d)\n", __func__, w, w);
+	}
 
 	return ret;
 }
@@ -1904,11 +1945,11 @@ const dvp_sensor_config_t dvp_sensor_gc2145 =
 	.vsync = SYNC_HIGH_LEVEL,
 	.hsync = SYNC_HIGH_LEVEL,
 	/* default config */
-	.def_ppi = PPI_640X480,
+	.def_ppi = PPI_1024X600,
 	.def_fps = FPS20,
 	/* capability config */
 	.fps_cap = FPS10 | FPS15 | FPS20 | FPS25 | FPS30,
-	.ppi_cap = PPI_CAP_480X480 | PPI_CAP_640X480 | PPI_CAP_800X480 | PPI_CAP_1280X720 | PPI_CAP_1600X1200,
+	.ppi_cap = PPI_CAP_480X480 | PPI_CAP_640X480 | PPI_CAP_800X480 | PPI_CAP_1024X600 | PPI_CAP_1280X720 | PPI_CAP_1600X1200,
 	.id = ID_GC2145,
 	.address = (GC2145_WRITE_ADDRESS >> 1),
 	.init = gc2145_init,
