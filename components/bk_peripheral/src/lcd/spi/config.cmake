@@ -8,3 +8,7 @@ endif()
 if (CONFIG_LCD_SPI_GC9D01)
 	list(APPEND SPI_LCD_DEVICE_FILES ${SPI_LCD_PATH}/lcd_spi_gc9d01.c)
 endif()
+
+if (CONFIG_LCD_SPI_GC9A01)
+	list(APPEND SPI_LCD_DEVICE_FILES ${SPI_LCD_PATH}/lcd_spi_gc9a01.c)
+endif()

@@ -111,6 +111,10 @@ extern const lcd_device_t lcd_device_st7796u;
 extern const lcd_device_t lcd_device_gc9d01;
 #endif
 
+#if CONFIG_LCD_SPI_GC9A01
+extern const lcd_device_t lcd_device_gc9a01;
+#endif
+
 void lcd_panel_devices_init(void);
 
 

@@ -34,6 +34,7 @@ static void media_read_frame_info_callback(frame_buffer_t *frame)
 	os_printf("##DECODE:pixel_x:%d, pixel_y:%d\n\r", result.pixel_x,result.pixel_y);
 	os_printf("rotate_angle:%d(0:0 1:90 2:180 3:270)\n\r",jd_get_rotate());
 	os_printf("byte_order:%d(0:little endian 1:big endian)\n\r",jd_get_byte_order());
+	
 	switch(jd_get_format())
 	{
 		case JD_FORMAT_RGB888:

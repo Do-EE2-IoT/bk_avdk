@@ -561,12 +561,14 @@ bk_err_t lcd_display_open(lcd_open_t *config)
 #endif
 
     if (lcd_device->type == LCD_TYPE_SPI) {
+		os_printf("LCD Type SPI init");
     #if CONFIG_LCD_SPI_DISPLAY
         #if (LCD_SPI_DEVICE_NUM > 1)
             lcd_spi_init(LCD_SPI_ID0, lcd_device);
             lcd_spi_init(LCD_SPI_ID1, lcd_device);
         #else
             lcd_spi_init(LCD_SPI_ID, lcd_device);
+			os_printf("Display SPI 0");
         #endif
     #endif
     } else if (lcd_device->type == LCD_TYPE_QSPI) {

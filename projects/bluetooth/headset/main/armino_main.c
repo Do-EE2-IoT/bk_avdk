@@ -20,26 +20,23 @@ extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 
 #ifdef CONFIG_CACHE_CUSTOM_SRAM_MAPPING
 const unsigned int g_sram_addr_map[4] =
-{
-    0x38000000,
-    0x30020000,
-    0x38020000,
-    0x30000000
-};
+    {
+        0x38000000,
+        0x30020000,
+        0x38020000,
+        0x30000000};
 #endif
-
 
 static void user_app_main(void)
 {
-
 }
 
 int main(void)
 {
 #if (CONFIG_SYS_CPU0)
     rtos_set_user_app_entry((beken_thread_function_t)user_app_main);
-    //bk_set_printf_sync(true);
-    //shell_set_log_level(BK_LOG_INFO);
+    // bk_set_printf_sync(true);
+    // shell_set_log_level(BK_LOG_INFO);
 #endif
 
     bk_init();
@@ -56,14 +53,16 @@ int main(void)
 #if CONFIG_A2DP_SINK_DEMO
         extern int a2dp_sink_demo_init(uint8_t aac_supported);
         a2dp_sink_demo_init(0);
+        os_printf("a2dp_sink_demo_init");
 #endif
 
 #if CONFIG_HFP_HF_DEMO
         extern int hfp_hf_demo_init(uint8_t msbc_supported);
         hfp_hf_demo_init(0);
+        os_printf("hfp_hf_demo_init");
 #endif
 
-#if 0//CONFIG_BLE
+#if 0 // CONFIG_BLE
         cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
 
         dm_gatt_main(&param);

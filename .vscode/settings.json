@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "lcd_panel_devices.h": "c",
+        "lcd_types.h": "c"
+    }
+}

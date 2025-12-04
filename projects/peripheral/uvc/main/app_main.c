@@ -33,8 +33,8 @@ media_camera_device_t camera_device = {
 	.mode = JPEG_MODE,
 	.fmt = PIXEL_FMT_JPEG,
 	.info.fps = FPS25,
-	.info.resolution.width = 800,
-	.info.resolution.height = 480,
+	.info.resolution.width = 250,
+	.info.resolution.height = 250,
 };
 
 static void media_checkout_uvc_device_info(bk_uvc_device_brief_info_t *info, uvc_state_t state)

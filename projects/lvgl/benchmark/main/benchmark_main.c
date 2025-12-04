@@ -21,12 +21,16 @@ extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 
 #define CMDS_COUNT  (sizeof(s_benchmark_commands) / sizeof(struct cli_command))
 
+//const lcd_open_t lcd_open =
+//{
+//    .device_ppi = PPI_800X480,
+//    .device_name = "h050iwv",
+//};
 const lcd_open_t lcd_open =
 {
-    .device_ppi = PPI_800X480,
-    .device_name = "h050iwv",
+    .device_ppi = PPI_160X160,
+    .device_name = "gc9d01",
 };
-
 void cli_benchmark_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
 {
     os_printf("%s\r\n", __func__);

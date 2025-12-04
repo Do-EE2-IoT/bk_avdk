@@ -23,8 +23,8 @@ extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 
 const lcd_open_t lcd_open =
 {
-    .device_ppi = PPI_320X480,
-    .device_name = "st7796u",
+    .device_ppi = PPI_160X160,
+    .device_name = "gc9a01",
 };
 
 extern void lv_example_meter(void);
