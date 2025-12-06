@@ -15,8 +15,8 @@
 #include <os/os.h>
 #include <os/mem.h>
 #include "audio_record.h"
-#include "aud_intf.h"
-#include "aud_intf_types.h"
+#include <driver/aud_dmic.h>
+#include <driver/aud_dac.h>
 #include "ff.h"
 #include "diskio.h"
 
@@ -90,104 +90,82 @@ static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
 {
     // Forward mic data to SD (or other storage) and also forward to speaker for immediate playback
     // SD write is currently stubbed out; keep logging and forward to speaker
-    bk_err_t wret = BK_ERR_AUD_INTF_OK;
-
     os_printf("%s: data: %p, len: %u\n", __func__, data, len);
 
-    /* forward PCM data to speaker for playback */
-    wret = bk_aud_intf_write_spk_data(data, len);
-    if (wret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_write_spk_data ret:%d\n", __func__, wret);
-    }
-
     return len;
+}
+
+static void audio_dmic_isr(void)
+{
+    uint32_t dmic_data;
+
+    /* Read several samples from DMIC FIFO and forward to DAC */
+    for (uint8_t i = 0; i < 16; i++) {
+        if (bk_aud_dmic_get_fifo_data(&dmic_data) == BK_OK) {
+            bk_aud_dac_write(dmic_data);
+        } 
+        else {
+            break;
+        }
+    }
 }
 
 bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
 {
     bk_err_t ret = BK_OK;
-    // FRESULT fr;
-
-    aud_intf_drv_setup_t aud_intf_drv_setup = DEFAULT_AUD_INTF_DRV_SETUP_CONFIG();
-    aud_intf_mic_setup_t aud_intf_mic_setup = DEFAULT_AUD_INTF_MIC_SETUP_CONFIG();
 
     ret = tf_mount();
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_OK) {
         os_printf("%s: tfcard mount fail, ret:%d\n", __func__, ret);
         goto fail;
     }
 
-    /*open file to save pcm data */
-    // sprintf(mic_file_name, "1:/%s", file_name);
-    // fr = f_open(&mic_file, mic_file_name, FA_CREATE_ALWAYS | FA_WRITE);
-    // if (fr != FR_OK) {
-    //     os_printf("%s: open %s fail\n", __func__, mic_file_name);
-    //     goto fail;
-    // }
-
-    aud_intf_drv_setup.aud_intf_tx_mic_data = send_mic_data_to_sd;
-    ret = bk_aud_intf_drv_init(&aud_intf_drv_setup);
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_drv_init fail, ret:%d\n", __func__, ret);
-        goto fail;
-    }
-
-    ret = bk_aud_intf_set_mode(AUD_INTF_WORK_MODE_GENERAL);
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_set_mode fail, ret:%d\n", __func__, ret);
-        goto fail;
-    }
-
-    //aud_intf_mic_setup.mic_chl = AUD_INTF_MIC_CHL_MIC1;
-    aud_intf_mic_setup.samp_rate = samp_rate;
-    //aud_intf_mic_setup.mic_type = AUD_INTF_MIC_TYPE_UAC;
-    aud_intf_mic_setup.frame_size = 640;
-    //aud_intf_mic_setup.mic_gain = 0x2d;
-    ret = bk_aud_intf_mic_init(&aud_intf_mic_setup);
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_mic_init fail, ret:%d\n", __func__, ret);
-        goto fail;
-    }
-
-    /* initialize speaker so we can forward mic PCM to spk */
+    /* initialize DAC (speaker) */
     {
-        aud_intf_spk_setup_t aud_intf_spk_setup = DEFAULT_AUD_INTF_SPK_SETUP_CONFIG();
-        aud_intf_spk_setup.samp_rate = samp_rate;
-        aud_intf_spk_setup.frame_size = aud_intf_mic_setup.frame_size;
-        aud_intf_spk_setup.spk_gain = 0x2d;
+        aud_dac_config_t dac_cfg = DEFAULT_AUD_DAC_CONFIG();
+        dac_cfg.samp_rate = samp_rate;
 
-        ret = bk_aud_intf_spk_init(&aud_intf_spk_setup);
-        if (ret != BK_ERR_AUD_INTF_OK) {
-            os_printf("%s: bk_aud_intf_spk_init fail, ret:%d\n", __func__, ret);
-            goto fail;
-        }
-
-        ret = bk_aud_intf_spk_start();
-        if (ret != BK_ERR_AUD_INTF_OK) {
-            os_printf("%s: bk_aud_intf_spk_start fail, ret:%d\n", __func__, ret);
+        ret = bk_aud_dac_init(&dac_cfg);
+        if (ret != BK_OK) {
+            os_printf("%s: bk_aud_dac_init fail, ret:%d\n", __func__, ret);
             goto fail;
         }
     }
 
-    ret = bk_aud_intf_mic_start();
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_mic_start fail, ret:%d\n", __func__, ret);
-        goto fail;
+    /* initialize DMIC */
+    {
+        aud_dmic_config_t dmic_cfg = DEFAULT_AUD_DMIC_CONFIG();
+        dmic_cfg.samp_rate = samp_rate;
+
+        ret = bk_aud_dmic_init(&dmic_cfg);
+        if (ret != BK_OK) {
+            os_printf("%s: bk_aud_dmic_init fail, ret:%d\n", __func__, ret);
+            goto fail;
+        }
+
+        /* register ISR and enable interrupt (dmic-specific register) */
+        ret = bk_aud_dmic_register_isr(audio_dmic_isr);
+        if (ret != BK_OK) {
+            os_printf("%s: register dmic isr fail, ret:%d\n", __func__, ret);
+            goto fail;
+        }
+
+        bk_aud_dmic_set_dmic_wr_threshold(8);
+        bk_aud_dmic_enable_int();
+
+        /* start DAC and DMIC */
+        bk_aud_dac_start();
+        bk_aud_dmic_start();
     }
 
-	return BK_OK;
+    return BK_OK;
 
 fail:
-
-    bk_aud_intf_mic_stop();
-    bk_aud_intf_mic_deinit();
-    bk_aud_intf_spk_stop();
-    bk_aud_intf_spk_deinit();
-    bk_aud_intf_set_mode(AUD_INTF_WORK_MODE_NULL);
-    bk_aud_intf_drv_deinit();
-
-    /* close mic file */
-    // f_close(&mic_file);
+    /* try to clean up any partial init */
+    bk_aud_dmic_stop();
+    bk_aud_dmic_deinit();
+    bk_aud_dac_stop();
+    bk_aud_dac_deinit();
 
     return BK_FAIL;
 }
@@ -195,39 +173,29 @@ fail:
 bk_err_t audio_record_to_sdcard_stop(void)
 {
 	bk_err_t ret;
-    ret = bk_aud_intf_mic_stop();
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_mic_stop fail, ret:%d\n", __func__, ret);
+
+    /* disable dmic interrupt and unregister handler */
+    bk_aud_dmic_disable_int();
+    bk_aud_dmic_register_isr(NULL);
+
+    /* stop and deinit DMIC and DAC */
+    ret = bk_aud_dmic_stop();
+    if (ret != BK_OK) {
+        os_printf("%s: bk_aud_dmic_stop fail, ret:%d\n", __func__, ret);
+    }
+    ret = bk_aud_dmic_deinit();
+    if (ret != BK_OK) {
+        os_printf("%s: bk_aud_dmic_deinit fail, ret:%d\n", __func__, ret);
     }
 
-    ret = bk_aud_intf_mic_deinit();
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_mic_deinit fail, ret:%d\n", __func__, ret);
+    ret = bk_aud_dac_stop();
+    if (ret != BK_OK) {
+        os_printf("%s: bk_aud_dac_stop fail, ret:%d\n", __func__, ret);
     }
-
-    /* stop and deinit speaker if it was started */
-    ret = bk_aud_intf_spk_stop();
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_spk_stop fail, ret:%d\n", __func__, ret);
+    ret = bk_aud_dac_deinit();
+    if (ret != BK_OK) {
+        os_printf("%s: bk_aud_dac_deinit fail, ret:%d\n", __func__, ret);
     }
-
-    ret = bk_aud_intf_spk_deinit();
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_spk_deinit fail, ret:%d\n", __func__, ret);
-    }
-
-    ret = bk_aud_intf_set_mode(AUD_INTF_WORK_MODE_NULL);
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_set_mode fail, ret:%d\n", __func__, ret);
-    }
-
-    ret = bk_aud_intf_drv_deinit();
-    if (ret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_drv_deinit fail, ret:%d\n", __func__, ret);
-    }
-
-    /* close mic file */
-    // f_close(&mic_file);
 
     tf_unmount();
 
