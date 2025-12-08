@@ -714,7 +714,7 @@ void lv_demo_benchmark(void)
     benchmark_init();
 
     /*Manually start scenes*/
-    // scene_next_task_cb(NULL);
+    scene_next_task_cb(NULL);
 }
 
 
