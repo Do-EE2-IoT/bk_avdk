@@ -86,9 +86,6 @@ void my_touchpad_read(lv_indev_drv_t *drv, lv_indev_data_t *data)
         {
             data->continue_reading = false;
         }
-
-        // Debug log (chỉ bật khi cần kiểm tra tọa độ)
-        os_printf("TP Read: x=%d, y=%d, state=%d\n", last_x, last_y, last_state);
     }
     else
     {

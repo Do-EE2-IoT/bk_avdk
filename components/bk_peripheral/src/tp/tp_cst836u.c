@@ -36,7 +36,7 @@ extern void bk_mem_dump_ex(const char *title, unsigned char *data, uint32_t data
 #define CST836U_REG_LEN (1)
 #define CST836U_MAX_TOUCH_NUM (2)
 #define CST836U_POINT_INFO_NUM (TP_SUPPORT_MAX_NUM)
-#define CST836U_POINT_INFO_SIZE (7)
+#define CST836U_POINT_INFO_SIZE (6)
 #define CST836U_POINT_INFO_TOTAL_SIZE (CST836U_POINT_INFO_NUM * CST836U_POINT_INFO_SIZE)
 
 #define CST836U_STATUS (0x00)
@@ -116,43 +116,29 @@ void cst836u_read_point(uint8_t *input_buff, void *buf, uint8_t num)
     uint8_t read_id;
     uint16_t input_x;
     uint16_t input_y;
-    uint16_t input_w;
-    uint8_t off_set;
 
     for (read_index = 0; read_index < touch_num; read_index++)
     {
-        off_set = read_index * CST836U_POINT_INFO_SIZE;
         read_id = read_index;
-        // event_flag = (read_buf[off_set + 3] >> 4);
-        // input_x = ((uint16_t)(read_buf[off_set + 3] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 4]); /* x */
-        // input_y = ((uint16_t)(read_buf[off_set + 5] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 6]); /* y */
-  
-        os_printf("Byte[3]: 0x%02X\n", read_buf[off_set + 3]);
-        os_printf("Byte[4]: 0x%02X\n", read_buf[off_set + 4]);
-        os_printf("Byte[5]: 0x%02X\n", read_buf[off_set + 5]);
-        os_printf("Byte[6]: 0x%02X\n", read_buf[off_set + 6]);
-        event_flag = (read_buf[off_set + 3] >> 6); // Bit 7:6
-        input_x = ((uint16_t)(read_buf[off_set + 3] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 4]);
-        input_y = ((uint16_t)(read_buf[off_set + 3] & 0xF0) << 4) | (uint16_t)(read_buf[off_set + 5]);
-        input_w = 0;
+        event_flag = (read_buf[1] >> 6);
+        if (event_flag == 2)
+        {
+            input_x = (int)read_buf[2] + (int)(read_buf[1] & 0x0F) * 256; // x
+            input_y = (int)read_buf[4] + (int)(read_buf[3] & 0x0F) * 256; // y
 
-        os_printf("%s: touch %d, event_flag=0x%02X, x=%d, y=%d\r\n", __func__, read_index, event_flag, input_x, input_y);
-
-        if (event_flag == 0x00)
-        {
-            read_data[read_id].event = TP_EVENT_TYPE_DOWN;
-        }
-        else if (event_flag == 0x04)
-        {
-            read_data[read_id].event = TP_EVENT_TYPE_UP;
-        }
-        else if (event_flag == 0x08)
-        {
+            os_printf("%s: touch %d, event_flag=0x%02X, x=%d, y=%d\r\n", __func__, read_index, event_flag, input_x, input_y);
             read_data[read_id].event = TP_EVENT_TYPE_MOVE;
         }
+        else
+        {
+            return;
+        }
+
+        // read_data[read_id].event = TP_EVENT_TYPE_DOWN;
+
+        // read_data[read_id].event = TP_EVENT_TYPE_UP;
 
         read_data[read_id].timestamp = rtos_get_time();
-        read_data[read_id].width = input_w;
         read_data[read_id].x_coordinate = input_x;
         read_data[read_id].y_coordinate = input_y;
         read_data[read_id].track_id = read_id;
