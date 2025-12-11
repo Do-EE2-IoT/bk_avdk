@@ -123,17 +123,18 @@ void cst836u_read_point(uint8_t *input_buff, void *buf, uint8_t num)
     {
         off_set = read_index * CST836U_POINT_INFO_SIZE;
         read_id = read_index;
-        event_flag = (read_buf[off_set + 3] >> 4);
-        input_x = ((uint16_t)(read_buf[off_set + 3] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 4]); /* x */
-        input_y = ((uint16_t)(read_buf[off_set + 5] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 6]); /* y */
+        // event_flag = (read_buf[off_set + 3] >> 4);
+        // input_x = ((uint16_t)(read_buf[off_set + 3] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 4]); /* x */
+        // input_y = ((uint16_t)(read_buf[off_set + 5] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 6]); /* y */
+  
+        os_printf("Byte[3]: 0x%02X\n", read_buf[off_set + 3]);
+        os_printf("Byte[4]: 0x%02X\n", read_buf[off_set + 4]);
+        os_printf("Byte[5]: 0x%02X\n", read_buf[off_set + 5]);
+        os_printf("Byte[6]: 0x%02X\n", read_buf[off_set + 6]);
+        event_flag = (read_buf[off_set + 3] >> 6); // Bit 7:6
+        input_x = ((uint16_t)(read_buf[off_set + 3] & 0x0F) << 8) | (uint16_t)(read_buf[off_set + 4]);
+        input_y = ((uint16_t)(read_buf[off_set + 3] & 0xF0) << 4) | (uint16_t)(read_buf[off_set + 5]);
         input_w = 0;
-
-        os_printf("RAW I2C BUFF: ");
-        for (int i = 0; i < 20; i++)
-        {
-            os_printf("%02X ", input_buff[i]);
-        }
-        os_printf("\r\n");
 
         os_printf("%s: touch %d, event_flag=0x%02X, x=%d, y=%d\r\n", __func__, read_index, event_flag, input_x, input_y);
 
