@@ -19,71 +19,98 @@
 #include <driver/aud_dac.h>
 #include "ff.h"
 #include "diskio.h"
+#include "driver/gpio.h"
+#include "gpio_driver.h"
 
+#define SPEAKER_PA_PIN GPIO_13
 
-#define TAG  "AUD_RECORD_SDCARD"
+#define TAG "AUD_RECORD_SDCARD"
+
+void speaker_pa_enable(void)
+{
+    // 1. Unmap chân nếu nó đang được dùng cho chức năng khác (VD: JTAG/UART)
+    gpio_dev_unmap(SPEAKER_PA_PIN);
+
+    // 2. Disable chức năng Input (để tránh nhiễu)
+    bk_gpio_disable_input(SPEAKER_PA_PIN);
+
+    // 3. Enable chức năng Output
+    bk_gpio_enable_output(SPEAKER_PA_PIN);
+
+    // 4. Set mức logic để bật Loa (Ví dụ: Active High)
+    bk_gpio_set_output_high(SPEAKER_PA_PIN);
+
+    // Nếu mạch là Active Low thì dùng: bk_gpio_set_output_low(SPEAKER_PA_PIN);
+
+    os_printf("Speaker PA Enabled on GPIO %d\n", SPEAKER_PA_PIN);
+}
+
+void speaker_pa_disable(void)
+{
+    // Tắt loa (Ngược lại với lúc bật)
+    bk_gpio_set_output_low(SPEAKER_PA_PIN);
+}
 
 // static FIL mic_file;
 // static char mic_file_name[50];
 
 // static FATFS *pfs = NULL;
 
-
 static bk_err_t tf_mount(void)
 {
-	// FRESULT fr;
+    // FRESULT fr;
 
-	// if (pfs != NULL)
-	// {
-	// 	os_free(pfs);
-	// }
+    // if (pfs != NULL)
+    // {
+    // 	os_free(pfs);
+    // }
 
-	// pfs = os_malloc(sizeof(FATFS));
-	// if(NULL == pfs)
-	// {
+    // pfs = os_malloc(sizeof(FATFS));
+    // if(NULL == pfs)
+    // {
     //     os_printf("%s: malloc failed!\n", __func__);
-	// 	return BK_FAIL;
-	// }
+    // 	return BK_FAIL;
+    // }
 
-	// fr = f_mount(pfs, "1:", 1);
-	// if (fr != FR_OK)
-	// {
+    // fr = f_mount(pfs, "1:", 1);
+    // if (fr != FR_OK)
+    // {
     //     os_printf("%s: f_mount failed:%d\n", __func__, fr);
-	// 	return BK_FAIL;
-	// }
-	// else
-	// {
+    // 	return BK_FAIL;
+    // }
+    // else
+    // {
     //     os_printf("%s: f_mount OK!\n", __func__);
-	// }
+    // }
 
     os_printf("%s: tfcard mount successful!\n", __func__);
 
-	return BK_OK;
+    return BK_OK;
 }
 
 static bk_err_t tf_unmount(void)
 {
-	// FRESULT fr;
-	// fr = f_unmount(DISK_NUMBER_SDIO_SD, "1:", 1);
-	// if (fr != FR_OK)
-	// {
+    // FRESULT fr;
+    // fr = f_unmount(DISK_NUMBER_SDIO_SD, "1:", 1);
+    // if (fr != FR_OK)
+    // {
     //     os_printf("%s: f_unmount failed:%d\n", __func__, fr);
-	// 	return BK_FAIL;
-	// }
-	// else
-	// {
+    // 	return BK_FAIL;
+    // }
+    // else
+    // {
     //     os_printf("%s: f_unmount OK!\n", __func__);
-	// }
+    // }
 
-	// if (pfs)
-	// {
-	// 	os_free(pfs);
-	// 	pfs = NULL;
-	// }
+    // if (pfs)
+    // {
+    // 	os_free(pfs);
+    // 	pfs = NULL;
+    // }
 
     os_printf("%s: tfcard unmount successful!\n", __func__);
 
-	return BK_OK;
+    return BK_OK;
 }
 
 static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
@@ -100,11 +127,14 @@ static void audio_dmic_isr(void)
     uint32_t dmic_data;
 
     /* Read several samples from DMIC FIFO and forward to DAC */
-    for (uint8_t i = 0; i < 16; i++) {
-        if (bk_aud_dmic_get_fifo_data(&dmic_data) == BK_OK) {
+    for (uint8_t i = 0; i < 16; i++)
+    {
+        if (bk_aud_dmic_get_fifo_data(&dmic_data) == BK_OK)
+        {
             bk_aud_dac_write(dmic_data);
-        } 
-        else {
+        }
+        else
+        {
             break;
         }
     }
@@ -115,7 +145,8 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
     bk_err_t ret = BK_OK;
 
     ret = tf_mount();
-    if (ret != BK_OK) {
+    if (ret != BK_OK)
+    {
         os_printf("%s: tfcard mount fail, ret:%d\n", __func__, ret);
         goto fail;
     }
@@ -126,7 +157,8 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
         dac_cfg.samp_rate = samp_rate;
 
         ret = bk_aud_dac_init(&dac_cfg);
-        if (ret != BK_OK) {
+        if (ret != BK_OK)
+        {
             os_printf("%s: bk_aud_dac_init fail, ret:%d\n", __func__, ret);
             goto fail;
         }
@@ -138,14 +170,16 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
         dmic_cfg.samp_rate = samp_rate;
 
         ret = bk_aud_dmic_init(&dmic_cfg);
-        if (ret != BK_OK) {
+        if (ret != BK_OK)
+        {
             os_printf("%s: bk_aud_dmic_init fail, ret:%d\n", __func__, ret);
             goto fail;
         }
 
         /* register ISR and enable interrupt (dmic-specific register) */
         ret = bk_aud_dmic_register_isr(audio_dmic_isr);
-        if (ret != BK_OK) {
+        if (ret != BK_OK)
+        {
             os_printf("%s: register dmic isr fail, ret:%d\n", __func__, ret);
             goto fail;
         }
@@ -156,6 +190,8 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
         /* start DAC and DMIC */
         bk_aud_dac_start();
         bk_aud_dmic_start();
+
+        speaker_pa_enable();
     }
 
     return BK_OK;
@@ -172,7 +208,7 @@ fail:
 
 bk_err_t audio_record_to_sdcard_stop(void)
 {
-	bk_err_t ret;
+    bk_err_t ret;
 
     /* disable dmic interrupt and unregister handler */
     bk_aud_dmic_disable_int();
@@ -180,20 +216,24 @@ bk_err_t audio_record_to_sdcard_stop(void)
 
     /* stop and deinit DMIC and DAC */
     ret = bk_aud_dmic_stop();
-    if (ret != BK_OK) {
+    if (ret != BK_OK)
+    {
         os_printf("%s: bk_aud_dmic_stop fail, ret:%d\n", __func__, ret);
     }
     ret = bk_aud_dmic_deinit();
-    if (ret != BK_OK) {
+    if (ret != BK_OK)
+    {
         os_printf("%s: bk_aud_dmic_deinit fail, ret:%d\n", __func__, ret);
     }
 
     ret = bk_aud_dac_stop();
-    if (ret != BK_OK) {
+    if (ret != BK_OK)
+    {
         os_printf("%s: bk_aud_dac_stop fail, ret:%d\n", __func__, ret);
     }
     ret = bk_aud_dac_deinit();
-    if (ret != BK_OK) {
+    if (ret != BK_OK)
+    {
         os_printf("%s: bk_aud_dac_deinit fail, ret:%d\n", __func__, ret);
     }
 
@@ -201,4 +241,3 @@ bk_err_t audio_record_to_sdcard_stop(void)
 
     return BK_OK;
 }
-
