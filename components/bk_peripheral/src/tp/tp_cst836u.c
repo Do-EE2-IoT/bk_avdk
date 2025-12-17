@@ -42,10 +42,10 @@ extern void bk_mem_dump_ex(const char *title, unsigned char *data, uint32_t data
 #define CST836U_STATUS (0x00)
 #define CST836U_GESTUREID (0X01)
 #define CST836U_FINGERNUM (0X02)
-#define CST836U_XPOSH (0X03)
-#define CST836U_XPOSL (0X04)
-#define CST836U_YPOSH (0X05)
-#define CST836U_YPOSL (0X06)
+#define CST836U_XPOSH (0X03) // ok
+#define CST836U_XPOSL (0X04) // ok
+#define CST836U_YPOSH (0X05)  // ok
+#define CST836U_YPOSL (0X06)  // ok
 #define CST836U_TP_CHIP_ID_REG (0xAC) // 0xA7
 #define CST836U_MOTIONMASK (0xEC)
 #define CST836U_PUSHTIMER (0xEE)

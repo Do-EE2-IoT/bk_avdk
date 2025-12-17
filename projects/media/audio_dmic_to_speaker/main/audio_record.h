@@ -21,6 +21,8 @@ extern "C" {
 bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate);
 
 bk_err_t audio_record_to_sdcard_stop(void);
+bk_err_t get_fifo(uint32_t *d);
+bk_err_t dmic_cli_init(void);
 
 #ifdef __cplusplus
 }

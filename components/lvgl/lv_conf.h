@@ -728,6 +728,11 @@
     #endif
 #endif
 
+
+#define LV_USE_PERF_MONITOR 1
+#define LV_USE_PERF_MONITOR_POS LV_ALIGN_CENTER
+
+
 /*--END OF LV_CONF_H--*/
 
 #endif /*LV_CONF_H*/

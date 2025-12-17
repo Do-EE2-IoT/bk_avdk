@@ -120,26 +120,6 @@ bool gt911_detect(const tp_i2c_callback_t *cb)
 		return false;
 	}
 
-	uint8_t dummy = 0;
-	bk_err_t ret;
-
-	os_printf("---- I2C Scan Start ----\r\n");
-
-	for (uint16_t addr = 0; addr <= 255; addr++)
-	{
-		ret = SENSOR_I2C_READ(addr, &dummy, 1); // đọc thử 1 byte
-
-		if (ret == BK_OK)
-		{
-			os_printf("I2C device detected at 0x%02X (%d)\r\n", addr, addr);
-		}
-
-		// Tùy driver: thêm delay nhỏ để tránh treo bus
-		rtos_delay_milliseconds(2);
-	}
-
-	os_printf("---- I2C Scan Done ----\r\n");
-
 	uint32_t product_id = 0;
 
 	if (BK_OK != SENSOR_I2C_READ(GT911_PRODUCT_ID, (uint8_t *)(&product_id), sizeof(product_id)))

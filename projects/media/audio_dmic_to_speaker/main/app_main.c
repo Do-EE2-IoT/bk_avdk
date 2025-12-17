@@ -6,9 +6,11 @@
 #include "audio_record.h"
 #include "media_service.h"
 
+#include "driver/gpio.h"
+#include "gpio_driver.h"
+
 extern void user_app_main(void);
 extern void rtos_set_user_app_entry(beken_thread_function_t entry);
-
 
 #if (CONFIG_SYS_CPU0)
 static void cli_audio_record_to_sdcard_help(void)
@@ -21,17 +23,18 @@ void cli_audio_record_to_sdcard_cmd(char *pcWriteBuffer, int xWriteBufferLen, in
 	uint32_t samp_rate = 8000;
 
 	if (argc < 2)
-    {
+	{
 		cli_audio_record_to_sdcard_help();
 		return;
 	}
 
-	if (os_strcmp(argv[1], "start") == 0) {
-        if (argc < 4)
-        {
-            cli_audio_record_to_sdcard_help();
-            return;
-        }
+	if (os_strcmp(argv[1], "start") == 0)
+	{
+		if (argc < 4)
+		{
+			cli_audio_record_to_sdcard_help();
+			return;
+		}
 
 		samp_rate = strtoul(argv[3], NULL, 10);
 		if (BK_OK != audio_record_to_sdcard_start(argv[2], samp_rate))
@@ -39,27 +42,26 @@ void cli_audio_record_to_sdcard_cmd(char *pcWriteBuffer, int xWriteBufferLen, in
 		else
 			os_printf("start audio record to sdcard ok\n");
 	}
-	else if (os_strcmp(argv[1], "stop") == 0) {
+	else if (os_strcmp(argv[1], "stop") == 0)
+	{
 		audio_record_to_sdcard_stop();
-	} 
-	else {
+	}
+	else
+	{
 		cli_audio_record_to_sdcard_help();
 	}
-
 }
 
-
-#define AUDIO_RECORD_CMD_CNT  (sizeof(s_audio_record_commands) / sizeof(struct cli_command))
+#define AUDIO_RECORD_CMD_CNT (sizeof(s_audio_record_commands) / sizeof(struct cli_command))
 static const struct cli_command s_audio_record_commands[] =
-{
-	{"audio_record_to_sdcard", "audio_record_to_sdcard {start|stop file_name sample_rate}", cli_audio_record_to_sdcard_cmd},
+	{
+		{"audio_record_to_sdcard", "audio_record_to_sdcard {start|stop file_name sample_rate}", cli_audio_record_to_sdcard_cmd},
 };
 
 int cli_audio_record_init(void)
 {
 	return cli_register_commands(s_audio_record_commands, AUDIO_RECORD_CMD_CNT);
 }
-
 
 void user_app_main(void)
 {
@@ -73,10 +75,31 @@ int main(void)
 	rtos_set_user_app_entry((beken_thread_function_t)user_app_main);
 #endif
 	bk_init();
-    int media_service_init(void);
+	int media_service_init(void);
 	media_service_init();
 
-	os_printf("%s: media service init started!\n", __func__);
+#if (CONFIG_SYS_CPU0)
+	if (BK_OK != audio_record_to_sdcard_start("test.wav", 16000))
+		os_printf("start audio record to sdcard fail\n");
+	else
+		os_printf("start audio record to sdcard ok\n");
 
+	os_printf("%s: media service init started!\n", __func__);
+	uint32_t d;
+	while (1)
+	{
+
+		if (get_fifo(&d) == BK_OK)
+		{
+			
+			// os_printf("dmic=%08X\n", d);
+		}
+		else
+		{
+			os_printf("empty\n");
+			rtos_delay_milliseconds(10);
+		}
+	}
+#endif
 	return 0;
 }

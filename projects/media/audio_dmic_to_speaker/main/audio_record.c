@@ -122,21 +122,37 @@ static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
     return len;
 }
 
-static void audio_dmic_isr(void)
-{
-    uint32_t dmic_data;
+// static void audio_dmic_isr(void)
+// {
+//     uint32_t dmic_data;
+//     os_printf("%s: DMIC ISR triggered\n", __func__);
+//     /* Read several samples from DMIC FIFO and forward to DAC */
+//     for (uint8_t i = 0; i < 16; i++)
+//     {
+//         if (bk_aud_dmic_get_fifo_data(&dmic_data) == BK_OK)
+//         {
+//             os_printf("%s: dmic_data: 0x%08X\n", __func__, dmic_data);
+//             bk_aud_dac_write(dmic_data);
+//         }
+//         else
+//         {
+//             break;
+//         }
+//     }
+// }
 
-    /* Read several samples from DMIC FIFO and forward to DAC */
-    for (uint8_t i = 0; i < 16; i++)
+bk_err_t get_fifo(uint32_t *d)
+{
+    if (bk_aud_dmic_get_fifo_data(d) == BK_OK)
     {
-        if (bk_aud_dmic_get_fifo_data(&dmic_data) == BK_OK)
-        {
-            bk_aud_dac_write(dmic_data);
-        }
-        else
-        {
-            break;
-        }
+        os_printf("dmic=%08X\n", *d);
+        bk_aud_dac_write(*d);
+        return BK_OK;
+    }
+    else
+    {
+        os_printf("empty\n");
+        return BK_FAIL;
     }
 }
 
@@ -155,6 +171,7 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
     {
         aud_dac_config_t dac_cfg = DEFAULT_AUD_DAC_CONFIG();
         dac_cfg.samp_rate = samp_rate;
+        dac_cfg.dac_chl = AUD_DAC_CHL_L;
 
         ret = bk_aud_dac_init(&dac_cfg);
         if (ret != BK_OK)
@@ -168,6 +185,7 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
     {
         aud_dmic_config_t dmic_cfg = DEFAULT_AUD_DMIC_CONFIG();
         dmic_cfg.samp_rate = samp_rate;
+        dmic_cfg.dmic_chl = AUD_DMIC_CHL_L;
 
         ret = bk_aud_dmic_init(&dmic_cfg);
         if (ret != BK_OK)
@@ -176,22 +194,25 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
             goto fail;
         }
 
-        /* register ISR and enable interrupt (dmic-specific register) */
-        ret = bk_aud_dmic_register_isr(audio_dmic_isr);
-        if (ret != BK_OK)
-        {
-            os_printf("%s: register dmic isr fail, ret:%d\n", __func__, ret);
-            goto fail;
-        }
+        // /* register ISR and enable interrupt (dmic-specific register) */
+        // ret = bk_aud_dmic_register_isr(audio_dmic_isr);
+        // if (ret != BK_OK)
+        // {
+        //     os_printf("%s: register dmic isr fail, ret:%d\n", __func__, ret);
+        //     goto fail;
+        // }
 
         bk_aud_dmic_set_dmic_wr_threshold(8);
-        bk_aud_dmic_enable_int();
+        // bk_aud_dmic_enable_int();
 
         /* start DAC and DMIC */
         bk_aud_dac_start();
         bk_aud_dmic_start();
 
+        os_printf("%s: DMIC and DAC started at %u Hz\n", __func__, samp_rate);
         speaker_pa_enable();
+
+        // bk_aud_dmic_start_loop_test();
     }
 
     return BK_OK;
@@ -206,6 +227,15 @@ fail:
     return BK_FAIL;
 }
 
+bk_err_t dmic_cli_init(void)
+{
+#if (CLI_CFG_AUD == 1)
+    os_printf("%s: cli_aud_init called\n", __func__);
+    cli_aud_init();
+
+#endif
+    return BK_OK;
+}
 bk_err_t audio_record_to_sdcard_stop(void)
 {
     bk_err_t ret;
