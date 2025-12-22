@@ -24,6 +24,9 @@ bk_err_t audio_record_to_sdcard_stop(void);
 bk_err_t get_fifo(uint32_t *d);
 bk_err_t dmic_cli_init(void);
 
+bk_err_t dmic_capture_to_buffer(void);
+void dac_playback_from_buffer(void);
+
 #ifdef __cplusplus
 }
 #endif

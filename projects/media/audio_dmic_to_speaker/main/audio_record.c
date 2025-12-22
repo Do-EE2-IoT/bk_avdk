@@ -143,17 +143,22 @@ static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
 
 bk_err_t get_fifo(uint32_t *d)
 {
-    if (bk_aud_dmic_get_fifo_data(d) == BK_OK)
+
+    uint32_t dmic_status = 0;
+
+    bk_aud_dmic_get_status(&dmic_status);
+
+    if (dmic_status & (AUD_DMIC_NEAR_FULL_MASK | AUD_DMIC_FIFO_FULL_MASK))
     {
-        os_printf("dmic=%08X\n", *d);
+        bk_aud_dmic_get_fifo_data(d);
+        os_printf("DMIC FIFO data: 0x%08X\n", *d);
         bk_aud_dac_write(*d);
-        return BK_OK;
     }
     else
     {
-        os_printf("empty\n");
         return BK_FAIL;
     }
+    return BK_OK;
 }
 
 bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
@@ -171,7 +176,7 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
     {
         aud_dac_config_t dac_cfg = DEFAULT_AUD_DAC_CONFIG();
         dac_cfg.samp_rate = samp_rate;
-        dac_cfg.dac_chl = AUD_DAC_CHL_L;
+        dac_cfg.dac_chl = AUD_DAC_CHL_LR;
 
         ret = bk_aud_dac_init(&dac_cfg);
         if (ret != BK_OK)
@@ -185,7 +190,7 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
     {
         aud_dmic_config_t dmic_cfg = DEFAULT_AUD_DMIC_CONFIG();
         dmic_cfg.samp_rate = samp_rate;
-        dmic_cfg.dmic_chl = AUD_DMIC_CHL_L;
+        dmic_cfg.dmic_chl = AUD_DMIC_CHL_LR;
 
         ret = bk_aud_dmic_init(&dmic_cfg);
         if (ret != BK_OK)
