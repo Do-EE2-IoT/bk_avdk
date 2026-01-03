@@ -4,6 +4,7 @@ set(incs .
 
 set(srcs
 		app_main.c
+		wifi_iperf_client.c
 	)
 
 if (CONFIG_SYS_CPU0)
