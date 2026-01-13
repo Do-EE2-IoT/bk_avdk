@@ -357,7 +357,7 @@ bk_err_t audio_play_sdcard_mp3_music_start(char *file_name)
     }
 	aud_intf_spk_setup.samp_rate = audio_play_info->mp3FrameInfo.samprate;
 	aud_intf_spk_setup.frame_size = audio_play_info->mp3FrameInfo.outputSamps * 2;
-	aud_intf_spk_setup.spk_gain = 0x20;
+	aud_intf_spk_setup.spk_gain = 0x10;
 	aud_intf_spk_setup.work_mode = AUD_DAC_WORK_MODE_DIFFEN;
 	//aud_intf_spk_setup.spk_type = AUD_INTF_SPK_TYPE_UAC;
 	ret = bk_aud_intf_spk_init(&aud_intf_spk_setup);

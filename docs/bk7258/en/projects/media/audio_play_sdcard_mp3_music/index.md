@@ -526,6 +526,274 @@ aud_intf_spk_setup.work_mode = AUD_DAC_WORK_MODE_DIFFEN; // Differential output 
 - `AUD_DAC_WORK_MODE_SIGNAL_END` - Single-ended output
 - `AUD_DAC_WORK_MODE_DIFFEN` - Differential output (recommended for better quality)
 
+### DAC vs I2S Output - Important Difference
+
+> **❓ Question:** The current demo uses DAC output (pins AOP & AON). What if I want to use I2S instead?
+
+**Answer:** This is a critical architectural difference to understand:
+
+#### Current Demo (DAC Output)
+
+The `audio_play_sdcard_mp3_music` demo uses the **high-level audio interface** (`aud_intf` layer) which currently only supports:
+- **BOARD Type** (`AUD_INTF_SPK_TYPE_BOARD`) - uses internal DAC → outputs to AOP/AON pins
+- **UAC Type** (`AUD_INTF_SPK_TYPE_UAC`) - uses USB Audio Class
+
+```c
+// Current demo - uses DAC
+aud_intf_spk_setup_t setup = DEFAULT_AUD_INTF_SPK_SETUP_CONFIG();
+setup.spk_type = AUD_INTF_SPK_TYPE_BOARD;  // This uses DAC hardware
+setup.work_mode = AUD_DAC_WORK_MODE_DIFFEN; // DAC differential mode
+```
+
+**DAC Output Pins:**
+- **AOP** - Audio Output Positive
+- **AON** - Audio Output Negative
+
+#### I2S Output (Alternative Approach)
+
+To use I2S output, you have **two options**:
+
+##### Option 1: Use Low-Level I2S Driver Directly (Recommended for I2S)
+
+Bypass the `aud_intf` layer and use the I2S driver directly. This gives you full control but requires more manual setup.
+
+**Example Flow:**
+```mermaid
+graph LR
+    A[SD Card] -->|Read| B[MP3 Decoder]
+    B -->|PCM Data| C[Your Code]
+    C -->|bk_i2s_write_data| D[I2S Hardware]
+    D -->|MCLK/BCLK/LRCK/DIN| E[External I2S DAC]
+    
+    style C fill:#fffacd
+    style D fill:#e8f5e9
+    style E fill:#f3e5f5
+```
+
+**Implementation Steps:**
+
+**1. Initialize I2S Driver:**
+
+```c
+#include <driver/i2s.h>
+
+// Initialize I2S driver
+bk_i2s_driver_init();
+
+// Configure I2S
+i2s_config_t i2s_config = DEFAULT_I2S_CONFIG();
+i2s_config.role = I2S_ROLE_MASTER;           // BK7258 is I2S master
+i2s_config.work_mode = I2S_WORK_MODE_I2S;    // Standard I2S mode
+i2s_config.samp_rate = I2S_SAMP_RATE_44100;  // Match MP3 sample rate
+i2s_config.data_length = 16;                 // 16-bit audio
+i2s_config.store_mode = I2S_LRCOM_STORE_16R16L;  // Stereo format
+
+// Initialize I2S with GPIO group (choose your pins)
+bk_i2s_init(I2S_GPIO_GROUP_0, &i2s_config);  // GPIO6-9
+// or
+// bk_i2s_init(I2S_GPIO_GROUP_1, &i2s_config);  // GPIO40-43
+// or
+// bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);  // GPIO44-47
+```
+
+**I2S GPIO Groups:**
+| Group | MCLK | BCLK | LRCK | DIN/DOUT |
+|-------|------|------|------|----------|
+| GROUP_0 | GPIO6 | GPIO7 | GPIO8 | GPIO9 |
+| GROUP_1 | GPIO40 | GPIO41 | GPIO42 | GPIO43 |
+| GROUP_2 | GPIO44 | GPIO45 | GPIO46 | GPIO47 |
+
+**2. Setup I2S DMA Channel:**
+
+```c
+#include <driver/audio_ring_buff.h>
+
+static RingBufferContext *i2s_tx_rb;
+
+// Callback when I2S needs data
+static int i2s_tx_data_callback(uint32_t size)
+{
+    // This callback is called when I2S DMA needs data
+    // You should fill the ring buffer with PCM data here
+    return size;
+}
+
+// Initialize I2S channel with DMA
+bk_i2s_chl_init(I2S_CHANNEL_1,          // Use channel 1
+                I2S_TXRX_TYPE_TX,       // Transmit mode
+                4096,                   // Ring buffer size
+                i2s_tx_data_callback,   // Data callback
+                &i2s_tx_rb);            // Get ring buffer handle
+```
+
+**3. Modify Your Decode Handler:**
+
+Instead of using `bk_aud_intf_write_spk_data()`, write directly to I2S ring buffer:
+
+```c
+static bk_err_t mp3_decode_handler_i2s(unsigned int size)
+{
+    // ... (same SD card read and MP3 decode logic) ...
+    
+    // Decode MP3 frame
+    ret = MP3Decode(hMP3Decoder, &g_readptr, &bytesLeft, pcmBuf, 0);
+    if (ret == ERR_MP3_NONE) {
+        MP3GetLastFrameInfo(hMP3Decoder, &mp3FrameInfo);
+        
+        // Write PCM data to I2S ring buffer (instead of aud_intf)
+        uint32_t pcm_size = mp3FrameInfo.outputSamps * 2;  // 16-bit samples
+        uint32_t written = ring_buffer_write(i2s_tx_rb, (uint8_t*)pcmBuf, pcm_size);
+        
+        if (written != pcm_size) {
+            BK_LOGW(TAG, "I2S ring buffer full, written: %d/%d\n", written, pcm_size);
+        }
+    }
+    
+    return ret;
+}
+```
+
+**4. Start I2S Playback:**
+
+```c
+// Fill initial buffer
+uint8_t *init_data = os_malloc(2048);
+os_memset(init_data, 0, 2048);
+ring_buffer_write(i2s_tx_rb, init_data, 2048);
+os_free(init_data);
+
+// Start I2S
+bk_i2s_start();
+```
+
+**5. Stop I2S Playback:**
+
+```c
+bk_i2s_stop();
+bk_i2s_chl_deinit(I2S_CHANNEL_1, I2S_TXRX_TYPE_TX);
+bk_i2s_deinit();
+bk_i2s_driver_deinit();
+```
+
+**Complete I2S Example Structure:**
+
+```c
+// Global variables
+static HMP3Decoder hMP3Decoder;
+static RingBufferContext *i2s_tx_rb;
+static FIL mp3file;
+static unsigned char readBuf[MAINBUF_SIZE];
+static short pcmBuf[PCM_SIZE_MAX];
+
+// I2S callback - called by DMA when buffer needs refill
+static int i2s_tx_data_callback(uint32_t size)
+{
+    // Decode and fill buffer
+    // In real implementation, you might decode in a separate task
+    // and use this callback just to manage flow control
+    return size;
+}
+
+bk_err_t audio_play_i2s_start(char *filename)
+{
+    // 1. Mount SD card
+    tf_mount();
+    
+    // 2. Init MP3 decoder
+    hMP3Decoder = MP3InitDecoder();
+    
+    // 3. Open MP3 file
+    f_open(&mp3file, filename, FA_READ);
+    
+    // 4. Init I2S
+    bk_i2s_driver_init();
+    i2s_config_t i2s_config = DEFAULT_I2S_CONFIG();
+    i2s_config.samp_rate = I2S_SAMP_RATE_44100;  // Will adjust after detecting MP3 rate
+    bk_i2s_init(I2S_GPIO_GROUP_0, &i2s_config);
+    
+    // 5. Init I2S DMA channel
+    bk_i2s_chl_init(I2S_CHANNEL_1, I2S_TXRX_TYPE_TX, 
+                    4096, i2s_tx_data_callback, &i2s_tx_rb);
+    
+    // 6. Decode first frame to get format
+    // ... decode logic ...
+    
+    // 7. Update I2S sample rate based on MP3
+    i2s_samp_rate_t i2s_rate;
+    if (mp3FrameInfo.samprate == 44100) {
+        i2s_rate = I2S_SAMP_RATE_44100;
+    } else if (mp3FrameInfo.samprate == 48000) {
+        i2s_rate = I2S_SAMP_RATE_48000;
+    }
+    // ... add other rates ...
+    bk_i2s_set_samp_rate(i2s_rate);
+    
+    // 8. Fill initial buffer and start
+    // ... fill buffer with decoded PCM ...
+    bk_i2s_start();
+    
+    return BK_OK;
+}
+```
+
+**Project Configuration for I2S:**
+
+Add to your `CMakeLists.txt` or config:
+```makefile
+CONFIG_I2S=y                    # Enable I2S driver
+CONFIG_AUDIO_DAC=n              # Disable DAC if not using
+```
+
+##### Option 2: Extend aud_intf to Support I2S (Advanced)
+
+This would require modifying the SDK's audio interface layer to add I2S as a speaker type. This is more complex and not recommended unless you need the abstraction layer.
+
+**Pros of Using I2S:**
+- ✅ Better audio quality (external DAC)
+- ✅ Higher sample rates supported
+- ✅ Lower noise and distortion
+- ✅ Flexibility to choose external DAC chip
+
+**Cons of Using I2S:**
+- ❌ Requires external I2S DAC hardware
+- ❌ More complex setup (can't use aud_intf layer)
+- ❌ Need to manually handle all audio routing
+- ❌ More pins required (MCLK, BCLK, LRCK, DIN)
+
+**When to Use Each:**
+
+| Use Case | Recommendation |
+|----------|----------------|
+| Quick prototype, built-in speaker | **Use DAC** (current demo) |
+| High-quality audio output | **Use I2S** + external DAC |
+| USB speaker/headset | **Use UAC** type |
+| Cost-sensitive, simple design | **Use DAC** |
+| Professional audio equipment | **Use I2S** |
+
+#### Sample Rate Mapping
+
+When using I2S, you need to map MP3 sample rates to I2S enum:
+
+```c
+i2s_samp_rate_t get_i2s_sample_rate(uint32_t mp3_rate)
+{
+    switch (mp3_rate) {
+        case 8000:  return I2S_SAMP_RATE_8000;
+        case 11025: return I2S_SAMP_RATE_11025;
+        case 12000: return I2S_SAMP_RATE_12000;
+        case 16000: return I2S_SAMP_RATE_16000;
+        case 22050: return I2S_SAMP_RATE_22050;
+        case 24000: return I2S_SAMP_RATE_24000;
+        case 32000: return I2S_SAMP_RATE_32000;
+        case 44100: return I2S_SAMP_RATE_44100;
+        case 48000: return I2S_SAMP_RATE_48000;
+        default:    return I2S_SAMP_RATE_44100;  // Default fallback
+    }
+}
+```
+
+
+
 ---
 
 ## Extending to Other Audio Formats
