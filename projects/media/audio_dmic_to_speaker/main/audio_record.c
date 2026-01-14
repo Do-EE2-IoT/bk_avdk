@@ -90,26 +90,7 @@ static bk_err_t tf_mount(void)
 
 static bk_err_t tf_unmount(void)
 {
-    // FRESULT fr;
-    // fr = f_unmount(DISK_NUMBER_SDIO_SD, "1:", 1);
-    // if (fr != FR_OK)
-    // {
-    //     os_printf("%s: f_unmount failed:%d\n", __func__, fr);
-    // 	return BK_FAIL;
-    // }
-    // else
-    // {
-    //     os_printf("%s: f_unmount OK!\n", __func__);
-    // }
-
-    // if (pfs)
-    // {
-    // 	os_free(pfs);
-    // 	pfs = NULL;
-    // }
-
     os_printf("%s: tfcard unmount successful!\n", __func__);
-
     return BK_OK;
 }
 
@@ -122,24 +103,6 @@ static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
     return len;
 }
 
-// static void audio_dmic_isr(void)
-// {
-//     uint32_t dmic_data;
-//     os_printf("%s: DMIC ISR triggered\n", __func__);
-//     /* Read several samples from DMIC FIFO and forward to DAC */
-//     for (uint8_t i = 0; i < 16; i++)
-//     {
-//         if (bk_aud_dmic_get_fifo_data(&dmic_data) == BK_OK)
-//         {
-//             os_printf("%s: dmic_data: 0x%08X\n", __func__, dmic_data);
-//             bk_aud_dac_write(dmic_data);
-//         }
-//         else
-//         {
-//             break;
-//         }
-//     }
-// }
 
 bk_err_t get_fifo(uint32_t *d)
 {
