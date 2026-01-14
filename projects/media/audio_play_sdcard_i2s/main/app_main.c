@@ -213,6 +213,7 @@ int main(void)
 	// }
 
 #if (CONFIG_SYS_CPU0)
+	audio_play_sdcard_i2s_start("test_320kbps.mp3");
 //	bk_pm_module_vote_boot_cp1_ctrl(PM_BOOT_CP1_MODULE_NAME_AUDP_AUDIO, PM_POWER_MODULE_STATE_ON);
 #endif
 
@@ -222,8 +223,6 @@ int main(void)
 					   (beken_thread_function_t)adc_simple_task,
 					   1024 * 4, // Stack size
 					   NULL);
-
-	audio_play_sdcard_i2s_start("test_320kbps.mp3");
 
 	return 0;
 }
