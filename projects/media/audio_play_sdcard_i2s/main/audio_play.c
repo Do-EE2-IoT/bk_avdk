@@ -30,6 +30,7 @@
 
 #define PCM_SIZE_MAX		(MAX_NSAMP * MAX_NCHAN * MAX_NGRAN)
 
+float gain = 0.25f;
 
 typedef struct {
     HMP3Decoder hMP3Decoder;
@@ -203,8 +204,6 @@ static bk_err_t mp3_decode_handler(unsigned int size)
 		// 2. Ép kiểu buffer về int16_t để xử lý đúng giá trị âm thanh 16-bit
 		int16_t *pcm_ptr = (int16_t *)audio_play_info->pcmBuf;
 
-		// 3. Hệ số Gain (0.1 = 10% âm lượng gốc)
-		float gain = 0.05f;
 
 		// 4. Duyệt qua từng mẫu và nhân với hệ số Gain
 		for (int i = 0; i < samples; i++)
