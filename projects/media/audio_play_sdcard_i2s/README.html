@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phát Nhạc MP3 từ Thẻ SD qua I2S - BK7258</title>
+    
+    <!-- Mermaid JS for diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    
+    <!-- Highlight.js for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+    
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #7c3aed;
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --surface-hover: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --code-bg: #1e293b;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.8;
+            padding: 0;
+        }
+        
+        /* Header */
+        header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            padding: 3rem 2rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        /* Navigation */
+        nav {
+            background: var(--surface-color);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        nav ul {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            justify-content: center;
+        }
+        
+        nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        
+        nav a:hover {
+            color: var(--primary-color);
+        }
+        
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        /* Sections */
+        section {
+            background: var(--surface-color);
+            margin: 2rem 0;
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        
+        h2 {
+            color: var(--primary-color);
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid var(--primary-color);
+        }
+        
+        h3 {
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        h4 {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-top: 1.5rem;
+            margin-bottom: 0.8rem;
+        }
+        
+        /* Lists */
+        ul, ol {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        li {
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Code blocks */
+        pre {
+            background: var(--code-bg);
+            border-radius: 8px;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+            border: 1px solid var(--border-color);
+        }
+        
+        code {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        p code, li code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            color: #e879f9;
+            font-size: 0.9em;
+        }
+        
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        th {
+            background: var(--primary-color);
+            color: white;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        tr:hover {
+            background: var(--surface-hover);
+        }
+        
+        /* Blockquotes */
+        blockquote {
+            background: rgba(37, 99, 235, 0.1);
+            border-left: 4px solid var(--primary-color);
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 4px;
+        }
+        
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin: 0.2rem;
+        }
+        
+        .badge-success { background: var(--success-color); color: white; }
+        .badge-warning { background: var(--warning-color); color: white; }
+        .badge-info { background: var(--primary-color); color: white; }
+        
+        /* Mermaid diagrams */
+        .mermaid {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            margin: 1.5rem 0;
+        }
+        
+        /* Feature grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        
+        .feature-card {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 6px 12px rgba(37, 99, 235, 0.3);
+        }
+        
+        .feature-card h4 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+        
+        /* Alert boxes */
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border-left: 4px solid;
+        }
+        
+        .alert-info {
+            background: rgba(37, 99, 235, 0.1);
+            border-color: var(--primary-color);
+        }
+        
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: var(--warning-color);
+        }
+        
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: var(--success-color);
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 1.8rem;
+            }
+            
+            nav ul {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .container {
+                padding: 1rem;
+            }
+            
+            section {
+                padding: 1.5rem;
+            }
+        }
+        
+        /* Scroll to top button */
+        .scroll-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: transform 0.3s;
+        }
+        
+        .scroll-top:hover {
+            transform: scale(1.1);
+        }
+        
+        .scroll-top.visible {
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎵 Phát Nhạc MP3 từ Thẻ SD qua I2S - BK7258</h1>
+        <p>Dự án phát file âm thanh MP3 từ thẻ SD Card thông qua giao tiếp I2S trên chip BK7258</p>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="#overview">Tổng Quan</a></li>
+            <li><a href="#hardware">Phần Cứng</a></li>
+            <li><a href="#build">Build & Chạy</a></li>
+            <li><a href="#code">Cấu Trúc Code</a></li>
+            <li><a href="#technical">Chi Tiết Kỹ Thuật</a></li>
+            <li><a href="#api">API Reference</a></li>
+            <li><a href="#troubleshooting">Troubleshooting</a></li>
+        </ul>
+    </nav>
+    
+    <div class="container">
+        <section id="overview">
+            <h2>Tổng Quan</h2>
+            <p>Dự án này minh họa cách phát nhạc MP3 từ thẻ nhớ SD thông qua giao tiếp I2S với DAC ngoài trên chip BK7258. Hệ thống bao gồm:</p>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h4>🎵 Đọc File MP3</h4>
+                    <p>Đọc file MP3 từ thẻ SD Card sử dụng FatFS</p>
+                </div>
+                <div class="feature-card">
+                    <h4>🔊 Giải Mã MP3</h4>
+                    <p>Giải mã MP3 thành dữ liệu PCM 16-bit</p>
+                </div>
+                <div class="feature-card">
+                    <h4>📡 Xuất I2S</h4>
+                    <p>Xuất âm thanh qua I2S với DAC bên ngoài</p>
+                </div>
+                <div class="feature-card">
+                    <h4>🎚️ Điều Chỉnh Volume</h4>
+                    <p>Điều chỉnh âm lượng qua ADC với biến trở</p>
+                </div>
+            </div>
+            
+            <h3>Kiến Trúc Hệ Thống</h3>
+            <div class="mermaid">
+graph LR
+    A[Thẻ SD<br/>FatFS] -->|Đọc File MP3| B[MP3 Decoder]
+    B -->|PCM Data| C[I2S Ring Buffer]
+    C -->|I2S Protocol| D[DAC Ngoài]
+    D -->|Analog Audio| E[Loa]
+    F[ADC Volume<br/>Biến Trở] -->|Điều Chỉnh| B
+    
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#e8f5e9
+    style D fill:#f3e5f5
+    style E fill:#ffe0e0
+    style F fill:#fff9c4
+            </div>
+            
+            <h3>Luồng Xử Lý</h3>
+            <div class="mermaid">
+sequenceDiagram
+    participant SD as SD Card
+    participant MP3 as MP3 Decoder
+    participant RB as Ring Buffer
+    participant I2S as I2S Hardware
+    participant DAC as External DAC
+    
+    loop Decode Thread
+        SD->>MP3: Đọc dữ liệu MP3
+        MP3->>MP3: Giải mã MP3 → PCM
+        MP3->>MP3: Áp dụng Volume Gain
+        MP3->>RB: Ghi PCM vào Ring Buffer
+    end
+    
+    loop I2S DMA
+        I2S->>RB: Lấy PCM data
+        I2S->>DAC: Truyền qua I2S
+        DAC->>DAC: Chuyển Digital → Analog
+    end
+            </div>
+        </section>
+        
+        <section id="hardware">
+            <h2>Yêu Cầu Phần Cứng</h2>
+            
+            <h3>Board BK7258</h3>
+            <ul>
+                <li><strong>Chip:</strong> BK7258 (QFN88 package)</li>
+                <li><strong>PSRAM:</strong> 8MB hoặc 16MB</li>
+                <li><strong>Dual Core:</strong> CPU0 (đọc file, giải mã) + CPU1 (media service)</li>
+            </ul>
+            
+            <h3>Thẻ SD Card</h3>
+            <ul>
+                <li><strong>Định dạng:</strong> FAT32</li>
+                <li><strong>Kết nối:</strong> SDIO interface</li>
+                <li><strong>Dung lượng:</strong> Tùy ý (khuyến nghị ≤32GB để tương thích FAT32)</li>
+            </ul>
+            
+            <h3>DAC I2S Bên Ngoài</h3>
+            <ul>
+                <li><strong>Giao tiếp:</strong> I2S (Master mode từ BK7258)</li>
+                <li><strong>GPIO sử dụng:</strong> GPIO Group 2 (GPIO44-47)
+                    <ul>
+                        <li>GPIO44: MCLK (Master Clock)</li>
+                        <li>GPIO45: BCLK (Bit Clock)</li>
+                        <li>GPIO46: LRCK (Left/Right Clock)</li>
+                        <li>GPIO47: DIN (Data Input to DAC)</li>
+                    </ul>
+                </li>
+            </ul>
+            
+            <h4>Sơ Đồ Đấu Nối Stereo Mode với 1 I2S</h4>
+            <pre style="background: #1a1a2e; color: #00ff88; padding: 1.5rem; border-radius: 8px; font-size: 0.85rem; line-height: 1.4;"><code>┌─────────────────────────────────────────────────────────────────────┐
+│                           BK7258 Board                              │
+│                                                                     │
+│  GPIO44 (MCLK)  ────────────────────────┐                          │
+│  GPIO45 (BCLK)  ──────────────────┐     │                          │
+│  GPIO46 (LRCK)  ────────────┐     │     │                          │
+│  GPIO47 (DIN)   ──────┐     │     │     │                          │
+│  GND            ───┐  │     │     │     │                          │
+│  3.3V/5V        ─┐ │  │     │     │     │                          │
+└──────────────────┼─┼──┼─────┼─────┼─────┼──────────────────────────┘
+                   │ │  │     │     │     │
+                   │ │  │     │     │     │
+                   │ │  │     │     │     │
+┌──────────────────┼─┼──┼─────┼─────┼─────┼──────────────────────────┐
+│                  │ │  │     │     │     │   I2S DAC Module         │
+│                  │ │  │     │     │     │   (VD: PCM5102/MAX98357) │
+│                  │ │  │     │     │     │                          │
+│  VCC   ──────────┘ │  │     │     │     │  ┌────────────────┐     │
+│  GND   ────────────┘  │     │     │     │  │   DAC Chip     │     │
+│  DIN   ───────────────┘     │     │     │  │                │     │
+│  LRCK  ─────────────────────┘     │     │  │  Left Ch  ──────────▶ Loa Trái
+│  BCLK  ───────────────────────────┘     │  │  Right Ch ──────────▶ Loa Phải
+│  MCLK  (optional) ───────────────────────┘  │                │     │
+│                                             └────────────────┘     │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+            
+            <h4>Giải Thích Đấu Nối</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Pin BK7258</th>
+                        <th>Chức Năng</th>
+                        <th>Kết nối đến</th>
+                        <th>Mô tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>GPIO44</strong></td>
+                        <td>MCLK</td>
+                        <td>DAC MCLK (nếu có)</td>
+                        <td>Master Clock (tùy chọn, một số DAC không cần)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>GPIO45</strong></td>
+                        <td>BCLK</td>
+                        <td>DAC BCLK/SCK</td>
+                        <td>Bit Clock - đồng bộ từng bit dữ liệu</td>
+                    </tr>
+                    <tr>
+                        <td><strong>GPIO46</strong></td>
+                        <td>LRCK</td>
+                        <td>DAC LRCK/WS</td>
+                        <td>Left/Right Clock - phân biệt kênh trái/phải</td>
+                    </tr>
+                    <tr>
+                        <td><strong>GPIO47</strong></td>
+                        <td>DIN</td>
+                        <td>DAC DIN/SD</td>
+                        <td>Serial Data - dữ liệu âm thanh stereo</td>
+                    </tr>
+                    <tr>
+                        <td><strong>3.3V/5V</strong></td>
+                        <td>Power</td>
+                        <td>DAC VCC</td>
+                        <td>Nguồn điện (kiểm tra datasheet DAC)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>GND</strong></td>
+                        <td>Ground</td>
+                        <td>DAC GND</td>
+                        <td>Mass chung</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="alert alert-info">
+                <h4 style="margin-top: 0;">🎵 Cơ Chế Stereo với 1 I2S</h4>
+                <ul>
+                    <li><strong>LRCK = 0 (LOW):</strong> Truyền dữ liệu kênh <strong>Left</strong></li>
+                    <li><strong>LRCK = 1 (HIGH):</strong> Truyền dữ liệu kênh <strong>Right</strong></li>
+                    <li>Dữ liệu stereo được <strong>time-multiplexed</strong> (ghép kênh theo thời gian) trên cùng 1 dây DIN</li>
+                    <li>DAC tự động tách ra thành 2 kênh analog output (Left & Right)</li>
+                </ul>
+            </div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h4 style="color: #10b981;">✅ PCM5102/PCM5102A</h4>
+                    <p>32-bit, 384kHz, I2S/Left-Justified</p>
+                </div>
+                <div class="feature-card">
+                    <h4 style="color: #10b981;">✅ MAX98357A</h4>
+                    <p>Class D Amp với I2S input (có sẵn ampli)</p>
+                </div>
+                <div class="feature-card">
+                    <h4 style="color: #10b981;">✅ UDA1334A</h4>
+                    <p>16/24-bit stereo DAC</p>
+                </div>
+                <div class="feature-card">
+                    <h4 style="color: #10b981;">✅ CS4344</h4>
+                    <p>24-bit stereo DAC</p>
+                </div>
+            </div>
+            
+            <blockquote>
+                <strong>💡 Lưu ý quan trọng:</strong>
+                <ul>
+                    <li>Một số DAC như PCM5102 có thể tự sinh MCLK nội bộ → không cần kết nối GPIO44</li>
+                    <li>Kiểm tra điện áp logic của DAC (3.3V hay 5V) để tránh hỏng GPIO</li>
+                    <li>Nối GND chung giữa BK7258 và DAC để tránh nhiễu</li>
+                    <li>Dây tín hiệu I2S nên ngắn (&lt;10cm) để giảm nhiễu</li>
+                </ul>
+            </blockquote>
+            
+            <h3>ADC Volume Control (Tùy Chọn)</h3>
+            <ul>
+                <li><strong>Channel:</strong> ADC_14</li>
+                <li><strong>Biến trở:</strong> 10kΩ (nối giữa 3.3V và GND, chân giữa vào ADC_14)</li>
+                <li><strong>Mức điều chỉnh:</strong>
+                    <ul>
+                        <li>4000-5000 (raw) → 25% volume</li>
+                        <li>2500-3000 → 50% volume</li>
+                        <li>1000-2000 → 75% volume</li>
+                        <li>&gt;8000 → 100% volume</li>
+                    </ul>
+                </li>
+            </ul>
+        </section>
+        
+        <section id="build">
+            <h2>Hướng Dẫn Build và Chạy</h2>
+            
+            <h3>1. Build Project</h3>
+            <pre><code class="language-bash">cd /path/to/bk_avdk
+
+# Build cho BK7258
+make bk7258 PROJECT=media/audio_play_sdcard_i2s
+
+# Firmware sẽ được tạo tại:
+# build/audio_play_sdcard_i2s/bk7258/all-app.bin</code></pre>
+            
+            <h3>2. Chuẩn Bị Thẻ SD</h3>
+            <ol>
+                <li><strong>Format thẻ SD</strong> sang định dạng <strong>FAT32</strong></li>
+                <li>Copy file MP3 vào thư mục gốc của thẻ SD (ví dụ: <code>test_320kbps.mp3</code>)</li>
+                <li>Lắp thẻ SD vào board BK7258</li>
+            </ol>
+            
+            <blockquote>
+                <strong>📝 Lưu ý:</strong> File MP3 hỗ trợ các sample rate: 8kHz, 11.025kHz, 12kHz, 16kHz, 22.05kHz, 24kHz, 32kHz, 44.1kHz, 48kHz, 88.2kHz, 96kHz
+            </blockquote>
+            
+            <h3>3. Flash Firmware</h3>
+            <pre><code class="language-bash"># Sử dụng công cụ flash của Beken
+# Hoặc dùng lệnh make để flash trực tiếp
+make flash</code></pre>
+            
+            <h3>4. Chạy Demo</h3>
+            <p>Sau khi flash xong, hệ thống sẽ <strong>tự động phát file</strong> <code>test_320kbps.mp3</code> (được cấu hình trong <code>app_main.c</code> dòng 216).</p>
+            
+            <h4>Sử dụng CLI để Điều Khiển</h4>
+            <p>Mở Serial Terminal (115200 baud):</p>
+            <pre><code class="language-bash"># Bắt đầu phát file MP3
+audio_play_sdcard_i2s start ten_file.mp3
+
+# Dừng phát nhạc
+audio_play_sdcard_i2s stop</code></pre>
+        </section>
+        
+        <section id="code">
+            <h2>Cấu Trúc Code</h2>
+            
+            <h3>Files Chính</h3>
+            <pre><code>audio_play_sdcard_i2s/
+├── main/
+│   ├── app_main.c          # Khởi tạo hệ thống, CLI commands, ADC volume
+│   ├── audio_play.c        # Logic phát nhạc I2S + MP3 decode
+│   ├── audio_play.h        # Header file API
+│   ├── vendor_flash.c      # Flash partition management
+│   └── CMakeLists.txt
+├── config/
+│   ├── bk7258/            # Cấu hình CPU0
+│   └── bk7258_cp1/        # Cấu hình CPU1
+├── CMakeLists.txt         # Build configuration
+├── pj_config.mk          # Dual-core build settings
+└── README.md             # Tài liệu này</code></pre>
+            
+            <h3>Kiến Trúc Dual-Core</h3>
+            <div class="mermaid">
+graph TB
+    subgraph CPU0["CPU0 - Application Core"]
+        A1[app_main.c]
+        A2[CLI Commands]
+        A3[SD Card Reader]
+        A4[MP3 Decoder]
+        A5[ADC Volume Control]
+    end
+    
+    subgraph CPU1["CPU1 - Media Service"]
+        B1[media_service]
+        B2[Audio Drivers]
+    end
+    
+    subgraph Hardware["Hardware Layer"]
+        C1[SDIO - SD Card]
+        C2[I2S - DAC Ngoài]
+        C3[ADC - Biến Trở]
+    end
+    
+    A1 --> A3
+    A1 --> A5
+    A3 --> A4
+    A4 --> B1
+    B1 --> B2
+    B2 --> C2
+    C1 --> A3
+    C3 --> A5
+    
+    style CPU0 fill:#e3f2fd
+    style CPU1 fill:#f3e5f5
+    style Hardware fill:#fff3e0
+            </div>
+        </section>
+        
+        <section id="technical">
+            <h2>Chi Tiết Kỹ Thuật</h2>
+            
+            <h3>1. Khởi Tạo I2S</h3>
+            <pre><code class="language-c">// Initialize I2S driver
+bk_i2s_driver_init();
+
+// Configure I2S
+i2s_config_t i2s_config = DEFAULT_I2S_CONFIG();
+i2s_config.role = I2S_ROLE_MASTER;           // BK7258 là Master
+i2s_config.work_mode = I2S_WORK_MODE_I2S;    // Chế độ I2S chuẩn
+i2s_config.samp_rate = I2S_SAMP_RATE_44100;  // 44.1kHz
+i2s_config.data_length = 16;                 // 16-bit audio
+i2s_config.store_mode = I2S_LRCOM_STORE_16R16L; // Stereo
+
+// Init với GPIO Group 2 (GPIO44-47)
+bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);
+
+// Init DMA channel với Ring Buffer
+bk_i2s_chl_init(I2S_CHANNEL_1,              // Channel 1
+                I2S_TXRX_TYPE_TX,           // TX mode
+                16384 * 4,                  // Ring buffer 64KB
+                i2s_tx_data_callback,       // Callback
+                &audio_play_info->i2s_tx_rb);</code></pre>
+            
+            <div class="alert alert-info">
+                <strong>Giải thích:</strong>
+                <ul>
+                    <li><strong>I2S Master Mode:</strong> BK7258 tạo tất cả clock signals (MCLK, BCLK, LRCK)</li>
+                    <li><strong>Ring Buffer Size:</strong> 64KB để chứa đủ PCM data, tránh underrun</li>
+                    <li><strong>GPIO Group 2:</strong> GPIO44-47 được cấu hình làm I2S pins</li>
+                </ul>
+            </div>
+            
+            <h3>2. MP3 Decode và Volume Control</h3>
+            <p>Luồng xử lý trong <code>mp3_decode_handler()</code>:</p>
+            <ol>
+                <li><strong>Refill buffer:</strong> Đọc thêm dữ liệu từ SD Card khi buffer sắp hết</li>
+                <li><strong>Tìm sync word:</strong> Xác định vị trí bắt đầu của MP3 frame</li>
+                <li><strong>Decode:</strong> Giải mã MP3 → PCM 16-bit</li>
+                <li><strong>Volume control:</strong> Nhân mỗi sample với hệ số <code>gain</code> (0.25 - 1.0)</li>
+                <li><strong>Blocking write:</strong> Ghi vào ring buffer, chờ nếu buffer đầy</li>
+            </ol>
+            
+            <h3>3. Decode Thread</h3>
+            <div class="alert alert-warning">
+                <strong>Tại sao cần Decode Thread riêng?</strong>
+                <ul>
+                    <li>I2S DMA callback không nên làm công việc nặng</li>
+                    <li>Decode MP3 cần thời gian → nên chạy trong thread riêng</li>
+                    <li>Thread này liên tục decode và fill ring buffer</li>
+                    <li>I2S DMA tự động lấy data từ ring buffer để phát</li>
+                </ul>
+            </div>
+            
+            <h3>4. ADC Volume Control</h3>
+            <p><strong>Nguyên lý:</strong></p>
+            <ul>
+                <li>Biến trở tạo điện áp analog (0V - 3.3V)</li>
+                <li>ADC đọc và chuyển thành giá trị digital (0 - 4095)</li>
+                <li>Biến toàn cục <code>gain</code> được cập nhật</li>
+                <li><code>mp3_decode_handler()</code> áp dụng <code>gain</code> vào mỗi PCM sample</li>
+            </ul>
+        </section>
+        
+        <section id="api">
+            <h2>API Reference</h2>
+            
+            <h3>I2S Driver APIs</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>API</th>
+                        <th>Mô Tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>bk_i2s_driver_init()</code></td><td>Khởi tạo I2S driver</td></tr>
+                    <tr><td><code>bk_i2s_init(gpio_group, config)</code></td><td>Cấu hình I2S với GPIO group</td></tr>
+                    <tr><td><code>bk_i2s_chl_init(...)</code></td><td>Khởi tạo DMA channel với ring buffer</td></tr>
+                    <tr><td><code>bk_i2s_set_samp_rate(rate)</code></td><td>Thay đổi sample rate</td></tr>
+                    <tr><td><code>bk_i2s_start()</code></td><td>Bắt đầu I2S transmission</td></tr>
+                    <tr><td><code>bk_i2s_stop()</code></td><td>Dừng I2S</td></tr>
+                    <tr><td><code>bk_i2s_chl_deinit()</code></td><td>Giải phóng DMA channel</td></tr>
+                    <tr><td><code>bk_i2s_deinit()</code></td><td>Deinit I2S</td></tr>
+                    <tr><td><code>bk_i2s_driver_deinit()</code></td><td>Deinit I2S driver</td></tr>
+                </tbody>
+            </table>
+            
+            <h3>MP3 Decoder APIs</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>API</th>
+                        <th>Mô Tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>MP3InitDecoder()</code></td><td>Tạo MP3 decoder instance</td></tr>
+                    <tr><td><code>MP3FindSyncWord(data, size)</code></td><td>Tìm MP3 frame sync word</td></tr>
+                    <tr><td><code>MP3Decode(...)</code></td><td>Giải mã một MP3 frame</td></tr>
+                    <tr><td><code>MP3GetLastFrameInfo(...)</code></td><td>Lấy thông tin frame vừa decode</td></tr>
+                    <tr><td><code>MP3FreeDecoder(decoder)</code></td><td>Giải phóng decoder</td></tr>
+                </tbody>
+            </table>
+            
+            <h3>GPIO Group Options</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>GPIO Group</th>
+                        <th>MCLK</th>
+                        <th>BCLK</th>
+                        <th>LRCK</th>
+                        <th>DIN</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>I2S_GPIO_GROUP_0</code></td>
+                        <td>GPIO6</td>
+                        <td>GPIO7</td>
+                        <td>GPIO8</td>
+                        <td>GPIO9</td>
+                    </tr>
+                    <tr>
+                        <td><code>I2S_GPIO_GROUP_1</code></td>
+                        <td>GPIO40</td>
+                        <td>GPIO41</td>
+                        <td>GPIO42</td>
+                        <td>GPIO43</td>
+                    </tr>
+                    <tr style="background: rgba(37, 99, 235, 0.2);">
+                        <td><code>I2S_GPIO_GROUP_2</code></td>
+                        <td>GPIO44</td>
+                        <td>GPIO45</td>
+                        <td>GPIO46</td>
+                        <td>GPIO47</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p><strong>Hiện tại project dùng GROUP_2</strong> (GPIO44-47).</p>
+        </section>
+        
+        <section id="troubleshooting">
+            <h2>Troubleshooting</h2>
+            
+            <h3>1. Không Nghe Thấy Âm Thanh</h3>
+            <div class="alert alert-warning">
+                <strong>Kiểm tra:</strong>
+                <ul>
+                    <li>✅ Đã kết nối đúng DAC I2S với GPIO44-47?</li>
+                    <li>✅ DAC có được cấp nguồn chưa?</li>
+                    <li>✅ File MP3 có tồn tại trên thẻ SD?</li>
+                    <li>✅ Thẻ SD đã được mount thành công? (xem log)</li>
+                    <li>✅ Biến trở điều chỉnh volume có đang ở mức quá thấp?</li>
+                </ul>
+            </div>
+            
+            <h3>2. Âm Thanh Bị Giật, Lag</h3>
+            <p><strong>Nguyên nhân:</strong></p>
+            <ul>
+                <li>Ring buffer quá nhỏ</li>
+                <li>SD Card đọc chậm</li>
+                <li>CPU load quá cao</li>
+            </ul>
+            <p><strong>Giải pháp:</strong> Tăng ring buffer size hoặc giảm delay trong decode thread.</p>
+            
+            <h3>3. File MP3 Không Phát Được</h3>
+            <div class="alert alert-info">
+                <strong>Kiểm tra:</strong>
+                <ul>
+                    <li>File có ID3 tag lớn? → Code đã xử lý skip ID3</li>
+                    <li>File MP3 có bị corrupt?</li>
+                    <li>Sample rate có được hỗ trợ không? (8k-96kHz)</li>
+                </ul>
+            </div>
+            
+            <pre><code class="language-bash"># Chuyển file MP3 sang format đơn giản hơn
+ffmpeg -i input.mp3 -ar 44100 -ac 2 -b:a 128k output.mp3</code></pre>
+        </section>
+        
+        <section>
+            <h2>Tính Năng Hiện Tại</h2>
+            <div class="alert alert-success">
+                <span class="badge badge-success">✅ Phát MP3 qua I2S với DAC ngoài</span>
+                <span class="badge badge-success">✅ Hỗ trợ GPIO Group 2 (GPIO44-47)</span>
+                <span class="badge badge-success">✅ Ring buffer 64KB</span>
+                <span class="badge badge-success">✅ Decode thread riêng</span>
+                <span class="badge badge-success">✅ ADC volume control</span>
+                <span class="badge badge-success">✅ Software gain control</span>
+                <span class="badge badge-success">✅ Auto skip ID3 tags</span>
+                <span class="badge badge-success">✅ CLI commands</span>
+            </div>
+        </section>
+        
+        <section>
+            <h2>Tác Giả & License</h2>
+            <p><strong>Project:</strong> audio_play_sdcard_i2s<br>
+            <strong>Platform:</strong> BK7258 (Beken AVDK)<br>
+            <strong>License:</strong> Apache License 2.0<br>
+            <strong>Documentation:</strong> Tiếng Việt (Vietnamese)</p>
+            
+            <p style="text-align: center; margin-top: 2rem; font-size: 1.5rem;">
+                <strong>Happy Coding! 🎵</strong>
+            </p>
+        </section>
+    </div>
+    
+    <div class="scroll-top" id="scrollTop">▲</div>
+    
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose'
+        });
+        
+        // Initialize syntax highlighting
+        hljs.highlightAll();
+        
+        // Scroll to top button
+        const scrollTop = document.getElementById('scrollTop');
+        window.addEventListener('scroll', () => {
+            if (window.pageYOffset > 300) {
+                scrollTop.classList.add('visible');
+            } else {
+                scrollTop.classList.remove('visible');
+            }
+        });
+        
+        scrollTop.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        
+        // Smooth scrolling for navigation
+        document.querySelectorAll('nav a').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

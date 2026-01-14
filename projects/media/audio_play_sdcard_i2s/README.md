@@ -75,6 +75,65 @@ sequenceDiagram
   - GPIO46: LRCK (Left/Right Clock)
   - GPIO47: DIN (Data Input to DAC)
 
+#### Sơ Đồ Đấu Nối Stereo Mode với 1 I2S
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           BK7258 Board                              │
+│                                                                     │
+│  GPIO44 (MCLK)  ────────────────────────┐                          │
+│  GPIO45 (BCLK)  ──────────────────┐     │                          │
+│  GPIO46 (LRCK)  ────────────┐     │     │                          │
+│  GPIO47 (DIN)   ──────┐     │     │     │                          │
+│  GND            ───┐  │     │     │     │                          │
+│  3.3V/5V        ─┐ │  │     │     │     │                          │
+└──────────────────┼─┼──┼─────┼─────┼─────┼──────────────────────────┘
+                   │ │  │     │     │     │
+                   │ │  │     │     │     │
+                   │ │  │     │     │     │
+┌──────────────────┼─┼──┼─────┼─────┼─────┼──────────────────────────┐
+│                  │ │  │     │     │     │   I2S DAC Module         │
+│                  │ │  │     │     │     │   (VD: PCM5102/MAX98357) │
+│                  │ │  │     │     │     │                          │
+│  VCC   ──────────┘ │  │     │     │     │  ┌────────────────┐     │
+│  GND   ────────────┘  │     │     │     │  │   DAC Chip     │     │
+│  DIN   ───────────────┘     │     │     │  │                │     │
+│  LRCK  ─────────────────────┘     │     │  │  Left Ch  ──────────▶ Loa Trái
+│  BCLK  ───────────────────────────┘     │  │  Right Ch ──────────▶ Loa Phải
+│  MCLK  (optional) ───────────────────────┘  │                │     │
+│                                             └────────────────┘     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Giải thích đấu nối:**
+
+| Pin BK7258 | Chức Năng | Kết nối đến | Mô tả |
+|------------|-----------|-------------|-------|
+| **GPIO44** | MCLK | DAC MCLK (nếu có) | Master Clock (tùy chọn, một số DAC không cần) |
+| **GPIO45** | BCLK | DAC BCLK/SCK | Bit Clock - đồng bộ từng bit dữ liệu |
+| **GPIO46** | LRCK | DAC LRCK/WS | Left/Right Clock - phân biệt kênh trái/phải |
+| **GPIO47** | DIN | DAC DIN/SD | Serial Data - dữ liệu âm thanh stereo |
+| **3.3V/5V** | Power | DAC VCC | Nguồn điện (kiểm tra datasheet DAC) |
+| **GND** | Ground | DAC GND | Mass chung |
+
+**Cơ chế Stereo với 1 I2S:**
+- **LRCK = 0 (LOW):** Truyền dữ liệu kênh **Left** 
+- **LRCK = 1 (HIGH):** Truyền dữ liệu kênh **Right**
+- Dữ liệu stereo được **time-multiplexed** (ghép kênh theo thời gian) trên cùng 1 dây DIN
+- DAC tự động tách ra thành 2 kênh analog output (Left & Right)
+
+**DAC Module Tương thích:**
+- ✅ **PCM5102/PCM5102A** - 32-bit, 384kHz, I2S/Left-Justified
+- ✅ **MAX98357A** - Class D Amp với I2S input (có sẵn ampli)
+- ✅ **UDA1334A** - 16/24-bit stereo DAC
+- ✅ **CS4344** - 24-bit stereo DAC
+
+> **💡 Lưu ý quan trọng:**
+> - Một số DAC như PCM5102 có thể tự sinh MCLK nội bộ → không cần kết nối GPIO44
+> - Kiểm tra điện áp logic của DAC (3.3V hay 5V) để tránh hỏng GPIO
+> - Nối GND chung giữa BK7258 và DAC để tránh nhiễu
+> - Dây tín hiệu I2S nên ngắn (< 10cm) để giảm nhiễu
+
 ### ADC Volume Control (Tùy Chọn)
 - **Channel:** ADC_14
 - **Biến trở:** 10kΩ (nối giữa 3.3V và GND, chân giữa vào ADC_14)
