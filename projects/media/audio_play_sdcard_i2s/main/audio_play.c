@@ -193,13 +193,52 @@ static bk_err_t mp3_decode_handler(unsigned int size)
 
 		MP3GetLastFrameInfo(audio_play_info->hMP3Decoder, &audio_play_info->mp3FrameInfo);
 
+		// ============================================================
+		// [MODIFIED] XỬ LÝ GIẢM ÂM LƯỢNG (SOFTWARE VOLUME CONTROL)
+		// ============================================================
+
+		// 1. Lấy số lượng mẫu (Samples)
+		int samples = audio_play_info->mp3FrameInfo.outputSamps;
+
+		// 2. Ép kiểu buffer về int16_t để xử lý đúng giá trị âm thanh 16-bit
+		int16_t *pcm_ptr = (int16_t *)audio_play_info->pcmBuf;
+
+		// 3. Hệ số Gain (0.1 = 10% âm lượng gốc)
+		float gain = 0.05f;
+
+		// 4. Duyệt qua từng mẫu và nhân với hệ số Gain
+		for (int i = 0; i < samples; i++)
+		{
+			pcm_ptr[i] = (int16_t)(pcm_ptr[i] * gain);
+		}
+
+		// ============================================================
+		// KẾT THÚC XỬ LÝ VOLUME
+		// ============================================================
+
 		/* write a frame speaker data to I2S ring buffer */
-		uint32_t pcm_size = audio_play_info->mp3FrameInfo.outputSamps * 2;  // 16-bit samples
-		uint32_t written = ring_buffer_write(audio_play_info->i2s_tx_rb, (uint8_t*)audio_play_info->pcmBuf, pcm_size);
-		
-		if (written != pcm_size) {
-			BK_LOGW(TAG,  "I2S ring buffer full, written: %d/%d  \n", written, pcm_size);
-			return BK_FAIL;
+		uint32_t pcm_size = audio_play_info->mp3FrameInfo.outputSamps * 2; // Tổng số byte cần ghi
+		uint8_t *write_ptr = (uint8_t *)audio_play_info->pcmBuf;		   // Con trỏ dữ liệu
+		uint32_t total_written = 0;										   // Số byte đã ghi được
+
+		// Vòng lặp: Cố gắng ghi cho đến khi hết dữ liệu của Frame này
+		while (total_written < pcm_size)
+		{
+
+			// Thử ghi phần còn lại vào Ring Buffer
+			uint32_t written = ring_buffer_write(audio_play_info->i2s_tx_rb,
+												 write_ptr + total_written,
+												 pcm_size - total_written);
+
+			total_written += written;
+
+			// Nếu chưa ghi hết (nghĩa là Buffer đang đầy)
+			if (total_written < pcm_size)
+			{
+				// Đừng return lỗi! Hãy ngủ 2ms để chờ I2S phát bớt nhạc đi
+				// Rồi vòng lặp sẽ quay lại ghi tiếp phần còn thiếu
+				rtos_delay_milliseconds(2);
+			}
 		}
 	}
 
@@ -291,6 +330,7 @@ bk_err_t audio_play_sdcard_i2s_stop(void)
 static int i2s_tx_data_callback(uint32_t size)
 {
     // Just return size - decode thread handles filling the buffer
+	os_printf("i2s tx data send, size = %d \r\n", size);
     return size;
 }
 
@@ -315,7 +355,7 @@ static void audio_decode_thread(void *arg)
         }
         
         // Small delay to prevent tight loop
-        rtos_delay_milliseconds(18);
+        rtos_delay_milliseconds(2);
     }
     
     BK_LOGI(TAG, "Decode thread exiting\n");
@@ -416,7 +456,7 @@ bk_err_t audio_play_sdcard_i2s_start(char *file_name)
 	i2s_config.work_mode = I2S_WORK_MODE_I2S;    // Standard I2S mode
 	i2s_config.samp_rate = I2S_SAMP_RATE_44100;  // Will adjust after detecting MP3 rate
 	i2s_config.data_length = 16;                 // 16-bit audio
-	i2s_config.store_mode = I2S_LRCOM_STORE_16R16L;  // Stereo format
+	i2s_config.store_mode = I2S_LRCOM_STORE_16R16L; // Stereo format
 
 	// Initialize I2S with GPIO GROUP_0 (GPIO6-9)
 	ret = bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);
