@@ -85,8 +85,25 @@ static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
     FRESULT fr;
     uint32 uiTemp = 0;
 
+    int16_t *pcm = (int16_t *)data;
+    uint32 sample_cnt = len / 2;
+
+    for (uint32 i = 0; i < sample_cnt; i++)
+    {
+        int32_t sample = pcm[i];
+        sample *= 4; // x4 gain
+
+        // Clamp chống overflow
+        if (sample > 32767)
+            sample = 32767;
+        else if (sample < -32768)
+            sample = -32768;
+
+        pcm[i] = (int16_t)sample;
+    }
+
     /* write data to file */
-    fr = f_write(&mic_file, (void *)data, len, &uiTemp);
+    fr = f_write(&mic_file, data, len, &uiTemp);
     if (fr != FR_OK)
     {
         BK_LOGE(TAG, "write %s fail.\r\n", mic_file_name);
@@ -139,7 +156,7 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
     aud_intf_mic_setup.samp_rate = samp_rate;
     // aud_intf_mic_setup.mic_type = AUD_INTF_MIC_TYPE_UAC;
     aud_intf_mic_setup.frame_size = 640;
-    // aud_intf_mic_setup.mic_gain = 0x2d;
+    aud_intf_mic_setup.mic_gain = 0x3f;
     ret = bk_aud_intf_mic_init(&aud_intf_mic_setup);
     if (ret != BK_ERR_AUD_INTF_OK)
     {

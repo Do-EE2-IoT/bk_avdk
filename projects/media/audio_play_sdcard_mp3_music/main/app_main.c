@@ -70,33 +70,34 @@ int main(void)
 	bk_init();
 	media_service_init();
 
-	// // bk_gpio_config_output(14);
-	// // bk_gpio_config_output(15);
-	// // bk_gpio_config_output(16);
-	// gpio_dev_unmap(2);
-	// bk_gpio_disable_input(2);
-	// bk_gpio_enable_output(2);
+	gpio_dev_unmap(2);
+	bk_gpio_disable_input(2);
+	bk_gpio_enable_output(2);
 
-	// gpio_dev_unmap(3);
-	// bk_gpio_disable_input(3);
-	// bk_gpio_enable_output(3);
+	gpio_dev_unmap(3);
+	bk_gpio_disable_input(3);
+	bk_gpio_enable_output(3);
 
-	// gpio_dev_unmap(4);
-	// bk_gpio_disable_input(4);
-	// bk_gpio_enable_output(4);
-	// while(1){
-	// 	bk_gpio_set_output_high(2);
-	// 	bk_gpio_set_output_high(3);
-	// 	bk_gpio_set_output_high(4);
-	// 	rtos_delay_milliseconds(3000);
-	// 	bk_gpio_set_output_low(2);
-	// 	bk_gpio_set_output_low(3);
-	// 	bk_gpio_set_output_low(4);
-	// 	rtos_delay_milliseconds(3000);
-	// }
+	gpio_dev_unmap(4);
+	bk_gpio_disable_input(4);
+	bk_gpio_enable_output(4);
 
+	gpio_dev_unmap(5);
+	bk_gpio_disable_input(5);
+	bk_gpio_enable_output(5);
 
-
+	while(1){
+		bk_gpio_set_output_high(2);
+		bk_gpio_set_output_high(3);
+		bk_gpio_set_output_high(4);
+		os_printf("Toggle \r\n");
+		rtos_delay_milliseconds(1000);
+		bk_gpio_set_output_low(2);
+		bk_gpio_set_output_low(3);
+		bk_gpio_set_output_low(4);
+		os_printf("Toggle \r\n");
+		rtos_delay_milliseconds(1000);
+	}
 
 #if (CONFIG_SYS_CPU0)
 //	bk_pm_module_vote_boot_cp1_ctrl(PM_BOOT_CP1_MODULE_NAME_AUDP_AUDIO, PM_POWER_MODULE_STATE_ON);
