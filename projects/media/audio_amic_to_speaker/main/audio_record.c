@@ -21,87 +21,89 @@
 #include "diskio.h"
 #include "gpio_driver.h"
 
-
-
-#define TAG  "AUD_RECORD_SDCARD"
+#define TAG "AUD_RECORD_SDCARD"
 
 // static FIL mic_file;
 // static char mic_file_name[50];
 
 // static FATFS *pfs = NULL;
 
-
 static bk_err_t tf_mount(void)
 {
-	// FRESULT fr;
+    // FRESULT fr;
 
-	// if (pfs != NULL)
-	// {
-	// 	os_free(pfs);
-	// }
+    // if (pfs != NULL)
+    // {
+    // 	os_free(pfs);
+    // }
 
-	// pfs = os_malloc(sizeof(FATFS));
-	// if(NULL == pfs)
-	// {
+    // pfs = os_malloc(sizeof(FATFS));
+    // if(NULL == pfs)
+    // {
     //     os_printf("%s: malloc failed!\n", __func__);
-	// 	return BK_FAIL;
-	// }
+    // 	return BK_FAIL;
+    // }
 
-	// fr = f_mount(pfs, "1:", 1);
-	// if (fr != FR_OK)
-	// {
+    // fr = f_mount(pfs, "1:", 1);
+    // if (fr != FR_OK)
+    // {
     //     os_printf("%s: f_mount failed:%d\n", __func__, fr);
-	// 	return BK_FAIL;
-	// }
-	// else
-	// {
+    // 	return BK_FAIL;
+    // }
+    // else
+    // {
     //     os_printf("%s: f_mount OK!\n", __func__);
-	// }
+    // }
 
     os_printf("%s: tfcard mount successful!\n", __func__);
 
-	return BK_OK;
+    return BK_OK;
 }
 
 static bk_err_t tf_unmount(void)
 {
-	// FRESULT fr;
-	// fr = f_unmount(DISK_NUMBER_SDIO_SD, "1:", 1);
-	// if (fr != FR_OK)
-	// {
+    // FRESULT fr;
+    // fr = f_unmount(DISK_NUMBER_SDIO_SD, "1:", 1);
+    // if (fr != FR_OK)
+    // {
     //     os_printf("%s: f_unmount failed:%d\n", __func__, fr);
-	// 	return BK_FAIL;
-	// }
-	// else
-	// {
+    // 	return BK_FAIL;
+    // }
+    // else
+    // {
     //     os_printf("%s: f_unmount OK!\n", __func__);
-	// }
+    // }
 
-	// if (pfs)
-	// {
-	// 	os_free(pfs);
-	// 	pfs = NULL;
-	// }
+    // if (pfs)
+    // {
+    // 	os_free(pfs);
+    // 	pfs = NULL;
+    // }
 
     os_printf("%s: tfcard unmount successful!\n", __func__);
 
-	return BK_OK;
+    return BK_OK;
 }
 
 static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
 {
-    // Forward mic data to SD (or other storage) and also forward to speaker for immediate playback
-    // SD write is currently stubbed out; keep logging and forward to speaker
-    bk_err_t wret = BK_ERR_AUD_INTF_OK;
+    int16_t *pcm = (int16_t *)data;
+    unsigned int samples = len / 2;
 
-    os_printf("mic len --->: %d\n", len);
+    for (unsigned int i = 0; i < samples; i++)
+    {
+        int32_t v = pcm[i] * 4; // x4 gain
 
-    /* forward PCM data to speaker for playback */
-    wret = bk_aud_intf_write_spk_data(data, len);
-    if (wret != BK_ERR_AUD_INTF_OK) {
-        os_printf("%s: bk_aud_intf_write_spk_data ret:%d\n", __func__, wret);
+        /* clamp chống overflow */
+        if (v > 32767)
+            v = 32767;
+        else if (v < -32768)
+            v = -32768;
+
+        pcm[i] = (int16_t)v;
     }
 
+    bk_aud_intf_write_spk_data(data, len);
     return len;
 }
 
@@ -111,10 +113,11 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
     // FRESULT fr;
 
     aud_intf_drv_setup_t aud_intf_drv_setup = DEFAULT_AUD_INTF_DRV_SETUP_CONFIG();
-    aud_intf_mic_setup_t  aud_intf_mic_setup = DEFAULT_AUD_INTF_MIC_SETUP_CONFIG();
+    aud_intf_mic_setup_t aud_intf_mic_setup = DEFAULT_AUD_INTF_MIC_SETUP_CONFIG();
 
     ret = tf_mount();
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: tfcard mount fail, ret:%d\n", __func__, ret);
         goto fail;
     }
@@ -129,24 +132,27 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
 
     aud_intf_drv_setup.aud_intf_tx_mic_data = send_mic_data_to_sd;
     ret = bk_aud_intf_drv_init(&aud_intf_drv_setup);
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_drv_init fail, ret:%d\n", __func__, ret);
         goto fail;
     }
 
     ret = bk_aud_intf_set_mode(AUD_INTF_WORK_MODE_GENERAL);
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_set_mode fail, ret:%d\n", __func__, ret);
         goto fail;
     }
 
-    //aud_intf_mic_setup.mic_chl = AUD_INTF_MIC_CHL_MIC1;
+    // aud_intf_mic_setup.mic_chl = AUD_INTF_MIC_CHL_MIC1;
     aud_intf_mic_setup.samp_rate = samp_rate;
-    //aud_intf_mic_setup.mic_type = AUD_INTF_MIC_TYPE_UAC;
+    // aud_intf_mic_setup.mic_type = AUD_INTF_MIC_TYPE_UAC;
     aud_intf_mic_setup.frame_size = 640;
-    //aud_intf_mic_setup.mic_gain = 0x2d;
+    // aud_intf_mic_setup.mic_gain = 0x2d;
     ret = bk_aud_intf_mic_init(&aud_intf_mic_setup);
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_mic_init fail, ret:%d\n", __func__, ret);
         goto fail;
     }
@@ -159,25 +165,28 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
         aud_intf_spk_setup.spk_gain = 0x3d;
 
         ret = bk_aud_intf_spk_init(&aud_intf_spk_setup);
-        if (ret != BK_ERR_AUD_INTF_OK) {
+        if (ret != BK_ERR_AUD_INTF_OK)
+        {
             os_printf("%s: bk_aud_intf_spk_init fail, ret:%d\n", __func__, ret);
             goto fail;
         }
 
         ret = bk_aud_intf_spk_start();
-        if (ret != BK_ERR_AUD_INTF_OK) {
+        if (ret != BK_ERR_AUD_INTF_OK)
+        {
             os_printf("%s: bk_aud_intf_spk_start fail, ret:%d\n", __func__, ret);
             goto fail;
         }
     }
 
     ret = bk_aud_intf_mic_start();
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_mic_start fail, ret:%d\n", __func__, ret);
         goto fail;
     }
 
-	return BK_OK;
+    return BK_OK;
 
 fail:
 
@@ -196,35 +205,41 @@ fail:
 
 bk_err_t audio_record_to_sdcard_stop(void)
 {
-	bk_err_t ret;
+    bk_err_t ret;
     ret = bk_aud_intf_mic_stop();
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_mic_stop fail, ret:%d\n", __func__, ret);
     }
 
     ret = bk_aud_intf_mic_deinit();
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_mic_deinit fail, ret:%d\n", __func__, ret);
     }
 
     /* stop and deinit speaker if it was started */
     ret = bk_aud_intf_spk_stop();
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_spk_stop fail, ret:%d\n", __func__, ret);
     }
 
     ret = bk_aud_intf_spk_deinit();
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_spk_deinit fail, ret:%d\n", __func__, ret);
     }
 
     ret = bk_aud_intf_set_mode(AUD_INTF_WORK_MODE_NULL);
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_set_mode fail, ret:%d\n", __func__, ret);
     }
 
     ret = bk_aud_intf_drv_deinit();
-    if (ret != BK_ERR_AUD_INTF_OK) {
+    if (ret != BK_ERR_AUD_INTF_OK)
+    {
         os_printf("%s: bk_aud_intf_drv_deinit fail, ret:%d\n", __func__, ret);
     }
 
@@ -235,4 +250,3 @@ bk_err_t audio_record_to_sdcard_stop(void)
 
     return BK_OK;
 }
-

@@ -26,7 +26,21 @@ void speaker_pa_enable(void)
 	bk_gpio_set_output_high(SPEAKER_PA_PIN);
 
 	os_printf("Speaker PA enabled on GPIO %d\n", SPEAKER_PA_PIN);
+}
 
+void enable_gpio(gpio_id_t gpio_pin)
+{
+	// 1. Unmap chân nếu nó đang được dùng cho chức năng khác (VD: JTAG/UART)
+	gpio_dev_unmap(gpio_pin);
+
+	// 2. Disable chức năng Input (để tránh nhiễu)
+	bk_gpio_disable_input(gpio_pin);
+
+	// 3. Enable chức năng Output
+	bk_gpio_enable_output(gpio_pin);
+
+	// 4. Set mức logic để bật Loa (Ví dụ: Active High)
+	bk_gpio_set_output_high(gpio_pin);
 }
 
 extern void user_app_main(void);
@@ -107,7 +121,60 @@ int main(void)
 	os_printf("%s: media service init started!\n", __func__);
 #endif
 
-	speaker_pa_enable();
+	// speaker_pa_enable();
+
+	// enable_gpio();
+	enable_gpio(GPIO_0);
+	enable_gpio(GPIO_1);
+	enable_gpio(GPIO_2);
+	enable_gpio(GPIO_3);
+	enable_gpio(GPIO_4);
+	enable_gpio(GPIO_5);
+	enable_gpio(GPIO_6);
+	enable_gpio(GPIO_7);
+	enable_gpio(GPIO_8);
+	enable_gpio(GPIO_9);
+
+	enable_gpio(GPIO_12);
+	enable_gpio(GPIO_13);
+	enable_gpio(GPIO_14);
+	enable_gpio(GPIO_15);
+
+	enable_gpio(GPIO_16);
+	enable_gpio(GPIO_17);
+	enable_gpio(GPIO_18);
+	enable_gpio(GPIO_19);
+
+	enable_gpio(GPIO_20);
+	enable_gpio(GPIO_21);
+	enable_gpio(GPIO_22);
+	enable_gpio(GPIO_23);
+	enable_gpio(GPIO_24);
+	enable_gpio(GPIO_25);
+	enable_gpio(GPIO_26);
+	enable_gpio(GPIO_27);
+	enable_gpio(GPIO_28);
+	enable_gpio(GPIO_29);
+
+	enable_gpio(GPIO_30);
+	enable_gpio(GPIO_31);
+	enable_gpio(GPIO_32);
+	enable_gpio(GPIO_33);
+	enable_gpio(GPIO_34);
+	enable_gpio(GPIO_35);
+	enable_gpio(GPIO_36);
+	enable_gpio(GPIO_37);
+	enable_gpio(GPIO_38);
+	enable_gpio(GPIO_39);
+
+	enable_gpio(GPIO_40);
+	enable_gpio(GPIO_41);
+	enable_gpio(GPIO_42);
+	enable_gpio(GPIO_43);
+	enable_gpio(GPIO_44);
+	enable_gpio(GPIO_45);
+	enable_gpio(GPIO_46);
+	enable_gpio(GPIO_47);
 
 	return 0;
 }
