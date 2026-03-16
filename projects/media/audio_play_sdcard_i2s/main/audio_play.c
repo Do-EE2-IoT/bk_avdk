@@ -329,7 +329,7 @@ bk_err_t audio_play_sdcard_i2s_stop(void)
 static int i2s_tx_data_callback(uint32_t size)
 {
     // Just return size - decode thread handles filling the buffer
-	os_printf("i2s tx data send, size = %d \r\n", size);
+	// os_printf("i2s tx data send, size = %d \r\n", size);
     return size;
 }
 
@@ -455,8 +455,8 @@ bk_err_t audio_play_sdcard_i2s_start(char *file_name)
 	i2s_config.work_mode = I2S_WORK_MODE_I2S;    // Standard I2S mode
 	i2s_config.samp_rate = I2S_SAMP_RATE_44100;  // Will adjust after detecting MP3 rate
 	i2s_config.data_length = 16;                 // 16-bit audio
+	
 	i2s_config.store_mode = I2S_LRCOM_STORE_16R16L; // Stereo format
-
 	// Initialize I2S with GPIO GROUP_0 (GPIO6-9)
 	ret = bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);
 	if (ret != BK_OK) {

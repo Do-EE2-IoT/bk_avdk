@@ -9,6 +9,181 @@
 #include "bk_gpio.h"
 #include "gpio_driver.h"
 #include "driver/adc.h"
+#include <driver/i2c.h>
+
+/* =========================================================
+ * I2C Scan dung Sim I2C Driver V2 (GPIO bit-bang)
+ * SDA = GPIO_5,  SCL = GPIO_8  (xem sim_i2c_driver_v2.c)
+ * ========================================================= */
+#define I2C_SCAN_SDA GPIO_1
+#define I2C_SCAN_SCL GPIO_0
+#define I2C_SCAN_TAG "I2C_SCAN"
+
+/* Delay don gian bang busy-wait (tuong tu driver v2, ~100 kHz) */
+#define I2C_SCAN_DELAY_COUNT 25
+
+static inline void scan_delay(void)
+{
+	volatile uint32_t i;
+	for (i = 0; i < I2C_SCAN_DELAY_COUNT; i++)
+	{
+	}
+}
+
+static inline void scan_sda_high(void)
+{
+	bk_gpio_disable_input(I2C_SCAN_SDA);
+	bk_gpio_enable_output(I2C_SCAN_SDA);
+	bk_gpio_set_output_high(I2C_SCAN_SDA);
+}
+static inline void scan_sda_low(void)
+{
+	bk_gpio_disable_input(I2C_SCAN_SDA);
+	bk_gpio_enable_output(I2C_SCAN_SDA);
+	bk_gpio_set_output_low(I2C_SCAN_SDA);
+}
+static inline void scan_scl_high(void)
+{
+	bk_gpio_disable_input(I2C_SCAN_SCL);
+	bk_gpio_enable_output(I2C_SCAN_SCL);
+	bk_gpio_set_output_high(I2C_SCAN_SCL);
+}
+static inline void scan_scl_low(void)
+{
+	bk_gpio_disable_input(I2C_SCAN_SCL);
+	bk_gpio_enable_output(I2C_SCAN_SCL);
+	bk_gpio_set_output_low(I2C_SCAN_SCL);
+}
+static inline uint8_t scan_read_sda(void)
+{
+	bk_gpio_disable_output(I2C_SCAN_SDA);
+	bk_gpio_enable_input(I2C_SCAN_SDA);
+	return (uint8_t)bk_gpio_get_input(I2C_SCAN_SDA);
+}
+
+/* ---- Tin hieu START / STOP ---- */
+static void scan_i2c_start(void)
+{
+	scan_sda_high();
+	scan_scl_high();
+	scan_delay();
+	scan_sda_low(); /* SDA xuong trong khi SCL cao -> START */
+	scan_delay();
+	scan_scl_low();
+	scan_delay();
+}
+
+static void scan_i2c_stop(void)
+{
+	scan_scl_low();
+	scan_sda_low();
+	scan_delay();
+	scan_scl_high();
+	scan_delay();
+	scan_sda_high(); /* SDA len trong khi SCL cao -> STOP */
+	scan_delay();
+}
+
+/* ---- Gui 8 bit, tra ve 1 neu nhan duoc ACK (SDA = 0) ---- */
+static int scan_i2c_send_byte(uint8_t byte)
+{
+	uint8_t mask;
+	for (mask = 0x80; mask; mask >>= 1)
+	{
+		if (byte & mask)
+			scan_sda_high();
+		else
+			scan_sda_low();
+		scan_delay();
+		scan_scl_high();
+		scan_delay();
+		scan_scl_low();
+		scan_delay();
+	}
+	/* Doc bit ACK */
+	scan_delay();
+	scan_scl_high();
+	scan_delay();
+	uint8_t ack = (scan_read_sda() == 0); /* ACK = SDA thap */
+	scan_scl_low();
+	scan_delay();
+	return ack;
+}
+
+/* ---- Probe mot dia chi 7-bit: 1 = co thiet bi, 0 = khong ---- */
+static int scan_i2c_probe(uint8_t addr)
+{
+	scan_i2c_start();
+	int ack = scan_i2c_send_byte((uint8_t)((addr << 1) | 0)); /* Write mode */
+	scan_i2c_stop();
+	return ack;
+}
+
+/* ---- Task chinh: quet toan bo dia chi I2C 7-bit (0x00 - 0x7F) ---- */
+void i2c_scan_task(void *arg)
+{
+	/* 1. Init GPIO (unmap khoi chuc nang phan cung, cau hinh pull-up) */
+	gpio_dev_unmap(I2C_SCAN_SDA);
+	gpio_dev_unmap(I2C_SCAN_SCL);
+	bk_gpio_pull_up(I2C_SCAN_SDA);
+	bk_gpio_pull_up(I2C_SCAN_SCL);
+
+	/* 2. Dua bus ve trang thai IDLE */
+	scan_sda_high();
+	scan_scl_high();
+	rtos_delay_milliseconds(100);
+
+	BK_LOGW(I2C_SCAN_TAG, "===== Bat dau quet dia chi I2C (0x00 - 0x7F) =====\r\n");
+	BK_LOGW(I2C_SCAN_TAG, "SDA = GPIO_%d  |  SCL = GPIO_%d\r\n",
+			(int)I2C_SCAN_SDA, (int)I2C_SCAN_SCL);
+
+	int found = 0;
+	uint8_t addr;
+	for (addr = 0x00; addr <= 0x7F; addr++)
+	{
+		rtos_delay_milliseconds(2); /* cho bus on dinh giua moi lan probe */
+		if (scan_i2c_probe(addr))
+		{
+			BK_LOGW(I2C_SCAN_TAG, "  [TIM THAY] Thiet bi tai dia chi: 0x%02X\r\n", addr);
+			found++;
+		}
+	}
+
+	BK_LOGW(I2C_SCAN_TAG, "===== Quet xong! Tim thay %d thiet bi =====\r\n", found);
+
+	/* Task ket thuc, giai phong */
+	rtos_delete_thread(NULL);
+}
+
+/* ---- Task chinh: quet toan bo dia chi I2C 7-bit (0x00 - 0x7F) ---- */
+void test_task(void *arg)
+{
+	gpio_dev_unmap(GPIO_2);
+	gpio_dev_unmap(GPIO_13);
+	gpio_dev_unmap(GPIO_29);
+	bk_gpio_disable_input(GPIO_2);
+	bk_gpio_enable_output(GPIO_2);
+
+	bk_gpio_disable_input(GPIO_13);
+	bk_gpio_enable_output(GPIO_13);
+
+	bk_gpio_disable_input(GPIO_29);
+	bk_gpio_enable_output(GPIO_29);
+	while (1)
+	{
+		os_printf("Test task running... Toggle GPIO_2, GPIO_13, GPIO_29\r\n");
+		bk_gpio_set_output_high(GPIO_2);
+		bk_gpio_set_output_high(GPIO_13);
+		bk_gpio_set_output_high(GPIO_29);
+		rtos_delay_milliseconds(500);
+		bk_gpio_set_output_low(GPIO_2);
+		bk_gpio_set_output_low(GPIO_13);
+		bk_gpio_set_output_low(GPIO_29);
+		rtos_delay_milliseconds(500);
+	}
+	/* Task ket thuc, giai phong */
+	rtos_delete_thread(NULL);
+}
 
 #define ADC_BUF_SIZE_1 10
 #define ADC_DETECT_CNT_MAX 0x1000
@@ -213,15 +388,33 @@ int main(void)
 	// }
 
 #if (CONFIG_SYS_CPU0)
-	audio_play_sdcard_i2s_start("test_320kbps.mp3");
+	// audio_play_sdcard_i2s_start("test_320kbps.mp3");
 //	bk_pm_module_vote_boot_cp1_ctrl(PM_BOOT_CP1_MODULE_NAME_AUDP_AUDIO, PM_POWER_MODULE_STATE_ON);
 #endif
 
+// rtos_create_thread(NULL,
+// 				   4,		   // Độ ưu tiên
+// 				   "adc_task", // Tên Task
+// 				   (beken_thread_function_t)adc_simple_task,
+// 				   1024 * 4, // Stack size
+// 				   NULL);
+#if CONFIG_SYS_CPU0
+	gain = 0.25;
+#endif
+
+	/* Tao task I2C scan */
 	rtos_create_thread(NULL,
-					   4,		   // Độ ưu tiên
-					   "adc_task", // Tên Task
-					   (beken_thread_function_t)adc_simple_task,
-					   1024 * 4, // Stack size
+					   5,				// Uu tien
+					   "i2c_scan_task", // Ten task
+					   (beken_thread_function_t)i2c_scan_task,
+					   1024 * 3, // Stack size
+					   NULL);
+
+	rtos_create_thread(NULL,
+					   5,			// Uu tien
+					   "test_task", // Ten task
+					   (beken_thread_function_t)test_task,
+					   1024 * 3, // Stack size
 					   NULL);
 
 	return 0;
