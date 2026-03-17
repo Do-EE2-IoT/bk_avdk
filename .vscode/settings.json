@@ -1,6 +1,8 @@
 {
-    "files.associations": {
-        "lcd_panel_devices.h": "c",
-        "lcd_types.h": "c"
-    }
+  "files.associations": {
+    "lcd_panel_devices.h": "c",
+    "lcd_types.h": "c",
+    "bk_https.h": "c",
+    "wifi.h": "c"
+  }
 }

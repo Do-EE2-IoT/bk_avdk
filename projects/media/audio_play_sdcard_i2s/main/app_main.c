@@ -11,6 +11,12 @@
 #include "driver/adc.h"
 #include <driver/i2c.h>
 
+/* ---------- OTA qua GitHub HTTPS ---------- */
+#include "ota_github.h"
+#include <modules/wifi.h>
+#include <components/event.h>
+#include <components/netif.h>
+
 /* =========================================================
  * I2C Scan dung Sim I2C Driver V2 (GPIO bit-bang)
  * SDA = GPIO_5,  SCL = GPIO_8  (xem sim_i2c_driver_v2.c)
@@ -171,7 +177,6 @@ void test_task(void *arg)
 	bk_gpio_enable_output(GPIO_29);
 	while (1)
 	{
-		os_printf("Test task running... Toggle GPIO_2, GPIO_13, GPIO_29\r\n");
 		bk_gpio_set_output_high(GPIO_2);
 		bk_gpio_set_output_high(GPIO_13);
 		bk_gpio_set_output_high(GPIO_29);
@@ -346,9 +351,33 @@ int cli_audio_play_sdcard_i2s_init(void)
 	return cli_register_commands(s_audio_play_sdcard_i2s_commands, AUDIO_PLAY_SDCARD_I2S_CMD_CNT);
 }
 
+/* ------------------------------------------------------------------
+ * Wi-Fi event handler: chạy OTA task sau khi STA connected.
+ * Chỉ chạy một lần (flag s_ota_started).
+ * NOTE: EVENT_WIFI_STA_CONNECTED fire khi associate xong, DHCP
+ *       chưa kịp hoàn thành. Task OTA đã có delay 5s bên trong
+ *       để chờ DHCP cấp IP trước khi query GitHub.
+ * ------------------------------------------------------------------ */
+static bool s_ota_started = false;
+
+static bk_err_t wifi_event_handler(void *arg, event_module_t event_module,
+								   int event_id, void *event_data)
+{
+	if (event_id == EVENT_WIFI_STA_CONNECTED && !s_ota_started)
+	{
+		s_ota_started = true;
+		ota_github_start();
+	}
+	return BK_OK;
+}
+
 void user_app_main(void)
 {
 	cli_audio_play_sdcard_i2s_init();
+
+	/* Đăng ký event handler để trigger OTA sau khi got IP */
+	bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL,
+						 wifi_event_handler, NULL);
 }
 #endif // #if (CONFIG_SYS_CPU0 && CONFIG_SOC_BK7236XX)
 
@@ -359,6 +388,18 @@ int main(void)
 #endif
 	bk_init();
 	media_service_init();
+
+	wifi_sta_config_t sta_config = WIFI_DEFAULT_STA_CONFIG();
+
+	strncpy(sta_config.ssid, "LUMI", WIFI_SSID_STR_LEN);
+	strncpy(sta_config.password, "lumivn274", WIFI_PASSWORD_LEN);
+
+	os_printf("ssid:%s password:%s\n", sta_config.ssid, sta_config.password);
+#if CONFIG_WIFI_ENABLE
+	BK_LOG_ON_ERR(bk_wifi_sta_set_config(&sta_config));
+	BK_LOG_ON_ERR(bk_wifi_sta_start());
+	os_printf("Wi-Fi STA started, connecting to AP...\n");	
+#endif
 
 	BK_LOG_ON_ERR(bk_adc_driver_init());
 

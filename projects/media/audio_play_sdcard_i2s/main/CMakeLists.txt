@@ -4,6 +4,7 @@ set(incs .
 
 set(srcs
 		app_main.c
+		ota_github.c
 	)
 
 if (CONFIG_SYS_CPU0)
@@ -12,7 +13,7 @@ if (CONFIG_SYS_CPU0)
 	)
 endif()
 
-set(priv_req bk_init bk_cli avdk_libs media_service)
+set(priv_req bk_init bk_cli avdk_libs media_service ota)
 
 list(APPEND priv_req multimedia)
 
@@ -25,5 +26,5 @@ endif()
 armino_component_register(
 	SRCS "${srcs}"
 	INCLUDE_DIRS "${incs}"
-	PRIV_REQUIRES "${priv_req}"
+	PRIV_REQUIRES "${priv_req}" bk_common bk_netif bk_ps fatfs bk_init at bk_wifi compal http bk_https mbedtls tfm psa_mbedtls
 )
