@@ -22,14 +22,14 @@ extern "C" {
  *  API endpoint sẽ là:
  *    https://api.github.com/repos/<owner>/<repo>/releases/latest
  */
-#define OTA_GITHUB_OWNER      "<YOUR_GITHUB_USER>"
-#define OTA_GITHUB_REPO       "<YOUR_REPO>"
+#define OTA_GITHUB_OWNER      "Do-EE2-IoT"
+#define OTA_GITHUB_REPO       "bk_avdk"
 
 /**
  * @brief  Tên file asset (.bin) trong GitHub Release.
  *         Phải khớp với tên file bạn upload lên Release Asset.
  */
-#define OTA_FIRMWARE_ASSET_NAME  "app.bin"
+#define OTA_FIRMWARE_ASSET_NAME  "all-app.bin"
 
 /**
  * @brief  Khởi động task OTA (chạy trong background thread).

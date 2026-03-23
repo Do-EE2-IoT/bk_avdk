@@ -5,6 +5,7 @@ set(incs .
 set(srcs
 		app_main.c
 		ota_github.c
+		tas_5711.c
 	)
 
 if (CONFIG_SYS_CPU0)

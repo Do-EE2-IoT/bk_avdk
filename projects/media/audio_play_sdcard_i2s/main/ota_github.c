@@ -131,13 +131,12 @@ static int json_get_string(const char *json, const char *key,
  *  trong mảng "assets" của JSON response.
  *
  *  Logic:
- *    Tìm "name":"<OTA_FIRMWARE_ASSET_NAME>" rồi scan ngược lại
- *    để tìm "browser_download_url" gần nhất trước đó.
- *    (GitHub trả về browser_download_url TRƯỚC name trong mỗi object)
+ *    Tìm "name":"<OTA_FIRMWARE_ASSET_NAME>" rồi QUÉT XUÔI
+ *    để tìm "browser_download_url" thuộc về file đó.
  * ========================================================= */
 static int find_asset_download_url(const char *json, char *url_out, int url_size)
 {
-    /* Tìm vị trí của asset name */
+    /* 1. Tìm vị trí của asset name */
     char asset_search[64];
     snprintf(asset_search, sizeof(asset_search), "\"name\":\"%s\"", OTA_FIRMWARE_ASSET_NAME);
 
@@ -147,18 +146,9 @@ static int find_asset_download_url(const char *json, char *url_out, int url_size
         return -1;
     }
 
-    /* Tìm "browser_download_url":"..." trước vị trí asset_pos */
-    /* Scan ngược bằng cách tìm từ đầu, lấy lần tìm thấy cuối cùng trước asset_pos */
+    /* 2. Tìm "browser_download_url":"..." SAU vị trí asset_pos */
     const char *dl_key = "\"browser_download_url\":\"";
-    const char *found  = NULL;
-    const char *p      = json;
-
-    while (p < asset_pos) {
-        const char *next = strstr(p, dl_key);
-        if (!next || next >= asset_pos) break;
-        found = next;
-        p = next + 1;
-    }
+    const char *found = strstr(asset_pos, dl_key);
 
     if (!found) {
         BK_LOGE(TAG, "browser_download_url not found\r\n");
@@ -188,7 +178,7 @@ static int ota_query_github(char *version_out, int version_size,
              "https://api.github.com/repos/%s/%s/releases/latest",
              OTA_GITHUB_OWNER, OTA_GITHUB_REPO);
 
-    BK_LOGI(TAG, "Query: %s\r\n", api_url);
+    BK_LOGW(TAG, "Query: %s\r\n", api_url);
 
     /* Reset buffer */
     memset(s_resp_buf, 0, sizeof(s_resp_buf));
@@ -228,14 +218,14 @@ static int ota_query_github(char *version_out, int version_size,
         BK_LOGE(TAG, "Parse tag_name failed\r\n");
         return -4;
     }
-    BK_LOGI(TAG, "Latest version on GitHub: %s\r\n", version_out);
+    BK_LOGW(TAG, "Latest version on GitHub: %s\r\n", version_out);
 
     /* Parse download URL của asset */
     if (find_asset_download_url(s_resp_buf, url_out, url_size) != 0) {
         BK_LOGE(TAG, "Parse download URL failed\r\n");
         return -5;
     }
-    BK_LOGI(TAG, "Firmware URL: %s\r\n", url_out);
+    BK_LOGW(TAG, "Firmware URL: %s\r\n", url_out);
 
     return 0;
 }
