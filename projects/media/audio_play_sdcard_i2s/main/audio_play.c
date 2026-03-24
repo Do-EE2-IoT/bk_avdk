@@ -458,7 +458,7 @@ bk_err_t audio_play_sdcard_i2s_start(char *file_name)
 	
 	i2s_config.store_mode = I2S_LRCOM_STORE_16R16L; // Stereo format
 	// Initialize I2S with GPIO GROUP_0 (GPIO6-9)
-	ret = bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);
+	ret = bk_i2s_init(I2S_GPIO_GROUP_0, &i2s_config);
 	if (ret != BK_OK) {
 		BK_LOGE(TAG,  "bk_i2s_init fail, ret:%d  \n", ret);
 		goto fail;

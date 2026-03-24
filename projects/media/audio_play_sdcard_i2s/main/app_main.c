@@ -17,6 +17,8 @@
 #include <components/event.h>
 #include <components/netif.h>
 
+#include "tas_5711.h"
+
 /* =========================================================
  * I2C Scan dung Sim I2C Driver V2 (GPIO bit-bang)
  * SDA = GPIO_5,  SCL = GPIO_8  (xem sim_i2c_driver_v2.c)
@@ -123,6 +125,31 @@ static int scan_i2c_probe(uint8_t addr)
 	int ack = scan_i2c_send_byte((uint8_t)((addr << 1) | 0)); /* Write mode */
 	scan_i2c_stop();
 	return ack;
+}
+
+void tas5711_demo_init(void)
+{
+	static tas5711_config_t tas_cfg;
+	bk_err_t ret;
+
+	tas5711_init_default_config(&tas_cfg);
+	tas_cfg.sda_gpio = I2C_SCAN_SDA;
+	tas_cfg.scl_gpio = I2C_SCAN_SCL;
+	tas_cfg.reset_gpio = GPIO_13;
+	tas_cfg.pdn_gpio = GPIO_12;
+	tas_cfg.start_muted = true;
+
+	ret = tas5711_init(&tas_cfg);
+	if (ret != BK_OK)
+	{
+		BK_LOGE("APP", "tas5711_init failed: %d\n", ret);
+		return;
+	}
+
+	tas5711_configure_serial_audio(TAS5711_SERIAL_FORMAT_I2S, 16);
+	tas5711_set_master_volume(0x30);
+	tas5711_set_channel_volume(0x30, 0x30);
+	tas5711_set_mute(false);
 }
 
 /* ---- Task chinh: quet toan bo dia chi I2C 7-bit (0x00 - 0x7F) ---- */
@@ -366,7 +393,7 @@ static bk_err_t wifi_event_handler(void *arg, event_module_t event_module,
 	if (event_id == EVENT_WIFI_STA_CONNECTED && !s_ota_started)
 	{
 		s_ota_started = true;
-		ota_github_start();
+		// ota_github_start();
 	}
 	return BK_OK;
 }
@@ -398,10 +425,10 @@ int main(void)
 #if CONFIG_WIFI_ENABLE
 	BK_LOG_ON_ERR(bk_wifi_sta_set_config(&sta_config));
 	BK_LOG_ON_ERR(bk_wifi_sta_start());
-	os_printf("Wi-Fi STA started, connecting to AP...\n");	
+	os_printf("Wi-Fi STA started, connecting to AP...\n");
 #endif
 
-	BK_LOG_ON_ERR(bk_adc_driver_init());
+	// BK_LOG_ON_ERR(bk_adc_driver_init());
 
 	// // bk_gpio_config_output(14);
 	// // bk_gpio_config_output(15);
@@ -429,8 +456,9 @@ int main(void)
 	// }
 
 #if (CONFIG_SYS_CPU0)
-	// audio_play_sdcard_i2s_start("test_320kbps.mp3");
-//	bk_pm_module_vote_boot_cp1_ctrl(PM_BOOT_CP1_MODULE_NAME_AUDP_AUDIO, PM_POWER_MODULE_STATE_ON);
+
+	audio_play_sdcard_i2s_start("test_320kbps.mp3");
+	bk_pm_module_vote_boot_cp1_ctrl(PM_BOOT_CP1_MODULE_NAME_AUDP_AUDIO, PM_POWER_MODULE_STATE_ON);
 #endif
 
 // rtos_create_thread(NULL,
@@ -451,12 +479,14 @@ int main(void)
 					   1024 * 3, // Stack size
 					   NULL);
 
-	rtos_create_thread(NULL,
-					   5,			// Uu tien
-					   "test_task", // Ten task
-					   (beken_thread_function_t)test_task,
-					   1024 * 3, // Stack size
-					   NULL);
+	//tas5711_demo_init();
+
+	// rtos_create_thread(NULL,
+	// 				   5,			// Uu tien
+	// 				   "test_task", // Ten task
+	// 				   (beken_thread_function_t)test_task,
+	// 				   1024 * 3, // Stack size
+	// 				   NULL);
 
 	return 0;
 }
