@@ -21,4 +21,4 @@ endif()
 armino_component_register(
 	SRCS "${srcs}"
 	INCLUDE_DIRS "${incs}"
-	PRIV_REQUIRES media bk_init bk_cli avdk_libs media_service multimedia)
+	PRIV_REQUIRES media bk_init bk_cli avdk_libs media_service multimedia bk_websocket bk_wifi bk_netif bk_event)

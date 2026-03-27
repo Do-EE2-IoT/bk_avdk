@@ -19,130 +19,32 @@
 
 #include "tas_5711.h"
 
-/* =========================================================
- * I2C Scan dung Sim I2C Driver V2 (GPIO bit-bang)
- * SDA = GPIO_5,  SCL = GPIO_8  (xem sim_i2c_driver_v2.c)
- * ========================================================= */
-#define I2C_SCAN_SDA GPIO_1
-#define I2C_SCAN_SCL GPIO_0
-#define I2C_SCAN_TAG "I2C_SCAN"
-
-/* Delay don gian bang busy-wait (tuong tu driver v2, ~100 kHz) */
-#define I2C_SCAN_DELAY_COUNT 25
-
-static inline void scan_delay(void)
-{
-	volatile uint32_t i;
-	for (i = 0; i < I2C_SCAN_DELAY_COUNT; i++)
-	{
-	}
-}
-
-static inline void scan_sda_high(void)
-{
-	bk_gpio_disable_input(I2C_SCAN_SDA);
-	bk_gpio_enable_output(I2C_SCAN_SDA);
-	bk_gpio_set_output_high(I2C_SCAN_SDA);
-}
-static inline void scan_sda_low(void)
-{
-	bk_gpio_disable_input(I2C_SCAN_SDA);
-	bk_gpio_enable_output(I2C_SCAN_SDA);
-	bk_gpio_set_output_low(I2C_SCAN_SDA);
-}
-static inline void scan_scl_high(void)
-{
-	bk_gpio_disable_input(I2C_SCAN_SCL);
-	bk_gpio_enable_output(I2C_SCAN_SCL);
-	bk_gpio_set_output_high(I2C_SCAN_SCL);
-}
-static inline void scan_scl_low(void)
-{
-	bk_gpio_disable_input(I2C_SCAN_SCL);
-	bk_gpio_enable_output(I2C_SCAN_SCL);
-	bk_gpio_set_output_low(I2C_SCAN_SCL);
-}
-static inline uint8_t scan_read_sda(void)
-{
-	bk_gpio_disable_output(I2C_SCAN_SDA);
-	bk_gpio_enable_input(I2C_SCAN_SDA);
-	return (uint8_t)bk_gpio_get_input(I2C_SCAN_SDA);
-}
-
-/* ---- Tin hieu START / STOP ---- */
-static void scan_i2c_start(void)
-{
-	scan_sda_high();
-	scan_scl_high();
-	scan_delay();
-	scan_sda_low(); /* SDA xuong trong khi SCL cao -> START */
-	scan_delay();
-	scan_scl_low();
-	scan_delay();
-}
-
-static void scan_i2c_stop(void)
-{
-	scan_scl_low();
-	scan_sda_low();
-	scan_delay();
-	scan_scl_high();
-	scan_delay();
-	scan_sda_high(); /* SDA len trong khi SCL cao -> STOP */
-	scan_delay();
-}
-
-/* ---- Gui 8 bit, tra ve 1 neu nhan duoc ACK (SDA = 0) ---- */
-static int scan_i2c_send_byte(uint8_t byte)
-{
-	uint8_t mask;
-	for (mask = 0x80; mask; mask >>= 1)
-	{
-		if (byte & mask)
-			scan_sda_high();
-		else
-			scan_sda_low();
-		scan_delay();
-		scan_scl_high();
-		scan_delay();
-		scan_scl_low();
-		scan_delay();
-	}
-	/* Doc bit ACK */
-	scan_delay();
-	scan_scl_high();
-	scan_delay();
-	uint8_t ack = (scan_read_sda() == 0); /* ACK = SDA thap */
-	scan_scl_low();
-	scan_delay();
-	return ack;
-}
-
-/* ---- Probe mot dia chi 7-bit: 1 = co thiet bi, 0 = khong ---- */
-static int scan_i2c_probe(uint8_t addr)
-{
-	scan_i2c_start();
-	int ack = scan_i2c_send_byte((uint8_t)((addr << 1) | 0)); /* Write mode */
-	scan_i2c_stop();
-	return ack;
-}
+#define TAS5711_APP_SDA GPIO_1
+#define TAS5711_APP_SCL GPIO_0
+#define TAS5711_APP_RESET GPIO_13
+#define TAS5711_APP_PDN GPIO_2
+#define TAS5711_APP_I2C_DELAY_INIT 25U
+#define TAS5711_APP_TAG "TAS5711_APP"
 
 void tas5711_demo_init(void)
 {
 	static tas5711_config_t tas_cfg;
 	bk_err_t ret;
+	uint32_t device_id = 0;
+	uint32_t error_status = 0;
 
 	tas5711_init_default_config(&tas_cfg);
-	tas_cfg.sda_gpio = I2C_SCAN_SDA;
-	tas_cfg.scl_gpio = I2C_SCAN_SCL;
-	tas_cfg.reset_gpio = GPIO_13;
-	tas_cfg.pdn_gpio = GPIO_12;
+	tas_cfg.sda_gpio = TAS5711_APP_SDA;
+	tas_cfg.scl_gpio = TAS5711_APP_SCL;
+	tas_cfg.reset_gpio = TAS5711_APP_RESET;
+	tas_cfg.pdn_gpio = TAS5711_APP_PDN;
+	tas_cfg.delay_count = TAS5711_APP_I2C_DELAY_INIT;
 	tas_cfg.start_muted = true;
 
 	ret = tas5711_init(&tas_cfg);
 	if (ret != BK_OK)
 	{
-		BK_LOGE("APP", "tas5711_init failed: %d\n", ret);
+		BK_LOGE(TAS5711_APP_TAG, "tas5711_init failed: %d\n", ret);
 		return;
 	}
 
@@ -150,68 +52,46 @@ void tas5711_demo_init(void)
 	tas5711_set_master_volume(0x30);
 	tas5711_set_channel_volume(0x30, 0x30);
 	tas5711_set_mute(false);
+
+	ret = tas5711_read_basic_status(&device_id, &error_status);
+	if (ret == BK_OK)
+	{
+		BK_LOGI(TAS5711_APP_TAG, "TAS5711 ready, DEV_ID=0x%02X ERR=0x%02X\r\n",
+				(unsigned int)device_id, (unsigned int)error_status);
+	}
+	else
+	{
+		BK_LOGW(TAS5711_APP_TAG, "TAS5711 init ok but status read failed: %d\r\n", ret);
+	}
 }
 
-/* ---- Task chinh: quet toan bo dia chi I2C 7-bit (0x00 - 0x7F) ---- */
-void i2c_scan_task(void *arg)
+static void tas5711_init_task(void *arg)
 {
-	/* 1. Init GPIO (unmap khoi chuc nang phan cung, cau hinh pull-up) */
-	gpio_dev_unmap(I2C_SCAN_SDA);
-	gpio_dev_unmap(I2C_SCAN_SCL);
-	bk_gpio_pull_up(I2C_SCAN_SDA);
-	bk_gpio_pull_up(I2C_SCAN_SCL);
-
-	/* 2. Dua bus ve trang thai IDLE */
-	scan_sda_high();
-	scan_scl_high();
 	rtos_delay_milliseconds(100);
 
-	BK_LOGW(I2C_SCAN_TAG, "===== Bat dau quet dia chi I2C (0x00 - 0x7F) =====\r\n");
-	BK_LOGW(I2C_SCAN_TAG, "SDA = GPIO_%d  |  SCL = GPIO_%d\r\n",
-			(int)I2C_SCAN_SDA, (int)I2C_SCAN_SCL);
+	tas5711_demo_init();
 
-	int found = 0;
-	uint8_t addr;
-	for (addr = 0x00; addr <= 0x7F; addr++)
-	{
-		rtos_delay_milliseconds(2); /* cho bus on dinh giua moi lan probe */
-		if (scan_i2c_probe(addr))
-		{
-			BK_LOGW(I2C_SCAN_TAG, "  [TIM THAY] Thiet bi tai dia chi: 0x%02X\r\n", addr);
-			found++;
-		}
-	}
-
-	BK_LOGW(I2C_SCAN_TAG, "===== Quet xong! Tim thay %d thiet bi =====\r\n", found);
-
-	/* Task ket thuc, giai phong */
 	rtos_delete_thread(NULL);
 }
 
 /* ---- Task chinh: quet toan bo dia chi I2C 7-bit (0x00 - 0x7F) ---- */
 void test_task(void *arg)
 {
-	gpio_dev_unmap(GPIO_2);
-	gpio_dev_unmap(GPIO_13);
-	gpio_dev_unmap(GPIO_29);
-	bk_gpio_disable_input(GPIO_2);
-	bk_gpio_enable_output(GPIO_2);
+	// gpio_dev_unmap(GPIO_2);
+	// gpio_dev_unmap(GPIO_13);
+	// gpio_dev_unmap(GPIO_29);
+	// bk_gpio_disable_input(GPIO_2);
+	// bk_gpio_enable_output(GPIO_2);
 
-	bk_gpio_disable_input(GPIO_13);
-	bk_gpio_enable_output(GPIO_13);
+	// bk_gpio_disable_input(GPIO_13);
+	// bk_gpio_enable_output(GPIO_13);
 
-	bk_gpio_disable_input(GPIO_29);
-	bk_gpio_enable_output(GPIO_29);
+	// bk_gpio_disable_input(GPIO_29);
+	// bk_gpio_enable_output(GPIO_29);
 	while (1)
 	{
-		bk_gpio_set_output_high(GPIO_2);
-		bk_gpio_set_output_high(GPIO_13);
-		bk_gpio_set_output_high(GPIO_29);
-		rtos_delay_milliseconds(500);
-		bk_gpio_set_output_low(GPIO_2);
-		bk_gpio_set_output_low(GPIO_13);
-		bk_gpio_set_output_low(GPIO_29);
-		rtos_delay_milliseconds(500);
+		os_printf("GPIO_2=%d, GPIO_13=%d\r\n", bk_gpio_get_value(GPIO_2), bk_gpio_get_value(GPIO_13));
+		rtos_delay_milliseconds(1000);
 	}
 	/* Task ket thuc, giai phong */
 	rtos_delete_thread(NULL);
@@ -416,6 +296,12 @@ int main(void)
 	bk_init();
 	media_service_init();
 
+	// gpio_dev_unmap(GPIO_12);
+	// bk_gpio_disable_input(GPIO_12);
+	// bk_gpio_enable_output(GPIO_12);
+	bk_gpio_set_output_high(GPIO_12);
+	// os_printf(" to HIGH\r\n");
+
 	wifi_sta_config_t sta_config = WIFI_DEFAULT_STA_CONFIG();
 
 	strncpy(sta_config.ssid, "LUMI", WIFI_SSID_STR_LEN);
@@ -429,31 +315,6 @@ int main(void)
 #endif
 
 	// BK_LOG_ON_ERR(bk_adc_driver_init());
-
-	// // bk_gpio_config_output(14);
-	// // bk_gpio_config_output(15);
-	// // bk_gpio_config_output(16);
-	// gpio_dev_unmap(2);
-	// bk_gpio_disable_input(2);
-	// bk_gpio_enable_output(2);
-
-	// gpio_dev_unmap(3);
-	// bk_gpio_disable_input(3);
-	// bk_gpio_enable_output(3);
-
-	// gpio_dev_unmap(4);
-	// bk_gpio_disable_input(4);
-	// bk_gpio_enable_output(4);
-	// while(1){
-	// 	bk_gpio_set_output_high(2);
-	// 	bk_gpio_set_output_high(3);
-	// 	bk_gpio_set_output_high(4);
-	// 	rtos_delay_milliseconds(3000);
-	// 	bk_gpio_set_output_low(2);
-	// 	bk_gpio_set_output_low(3);
-	// 	bk_gpio_set_output_low(4);
-	// 	rtos_delay_milliseconds(3000);
-	// }
 
 #if (CONFIG_SYS_CPU0)
 
@@ -471,22 +332,22 @@ int main(void)
 	gain = 0.25;
 #endif
 
-	/* Tao task I2C scan */
+	/* Tao task khoi tao TAS5711 */
+#if (CONFIG_SYS_CPU0)
 	rtos_create_thread(NULL,
-					   5,				// Uu tien
-					   "i2c_scan_task", // Ten task
-					   (beken_thread_function_t)i2c_scan_task,
+					   5,					// Uu tien
+					   "tas5711_init_task", // Ten task
+					   (beken_thread_function_t)tas5711_init_task,
 					   1024 * 3, // Stack size
 					   NULL);
+#endif
 
-	//tas5711_demo_init();
-
-	// rtos_create_thread(NULL,
-	// 				   5,			// Uu tien
-	// 				   "test_task", // Ten task
-	// 				   (beken_thread_function_t)test_task,
-	// 				   1024 * 3, // Stack size
-	// 				   NULL);
+	rtos_create_thread(NULL,
+					   5,					// Uu tien
+					   "test task", // Ten task
+					   (beken_thread_function_t)test_task,
+					   1024 * 3, // Stack size
+					   NULL);
 
 	return 0;
 }

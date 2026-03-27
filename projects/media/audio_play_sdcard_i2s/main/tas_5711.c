@@ -256,6 +256,83 @@ static void tas5711_configure_output_gpio(gpio_id_t gpio)
     bk_gpio_enable_output(gpio);
 }
 
+static void tas5711_configure_i2c_gpio(void)
+{
+    gpio_dev_unmap(s_tas5711.config.sda_gpio);
+    gpio_dev_unmap(s_tas5711.config.scl_gpio);
+    bk_gpio_pull_up(s_tas5711.config.sda_gpio);
+    bk_gpio_pull_up(s_tas5711.config.scl_gpio);
+}
+
+static void tas5711_i2c_bus_idle(void)
+{
+    tas5711_sda_high();
+    tas5711_scl_high();
+    tas5711_delay();
+    tas5711_sda_release();
+}
+
+static bool tas5711_i2c_probe_address(uint8_t address)
+{
+    bk_err_t ret;
+
+    tas5711_i2c_start();
+    ret = tas5711_i2c_write_byte((uint8_t)((address << 1) | 0U));
+    tas5711_i2c_stop();
+
+    return (ret == BK_OK);
+}
+
+static bk_err_t tas5711_scan_i2c_bus(void)
+{
+    uint32_t found_count = 0;
+    bool expected_found = false;
+    uint32_t address;
+
+    BK_LOGI(TAS5711_TAG, "I2C scan start, expect device at 0x%02X\r\n",
+            s_tas5711.config.i2c_address);
+
+    for (address = 0; address <= 0x7FU; ++address)
+    {
+        if (tas5711_i2c_probe_address((uint8_t)address))
+        {
+            BK_LOGI(TAS5711_TAG, "I2C device found at 0x%02X\r\n", (unsigned int)address);
+            ++found_count;
+
+            if (address == s_tas5711.config.i2c_address)
+            {
+                expected_found = true;
+            }
+        }
+    }
+
+    BK_LOGI(TAS5711_TAG, "I2C scan done, found %lu device(s)\r\n", (unsigned long)found_count);
+
+    if (!expected_found)
+    {
+        BK_LOGE(TAS5711_TAG, "Expected I2C address 0x%02X not found before TAS init\r\n",
+                s_tas5711.config.i2c_address);
+        return BK_FAIL;
+    }
+
+    return BK_OK;
+}
+
+static void tas5711_init_failed_cleanup(void)
+{
+    if (tas5711_gpio_is_used(s_tas5711.config.reset_gpio))
+    {
+        bk_gpio_set_output_low(s_tas5711.config.reset_gpio);
+    }
+
+    if (tas5711_gpio_is_used(s_tas5711.config.pdn_gpio))
+    {
+        bk_gpio_set_output_low(s_tas5711.config.pdn_gpio);
+    }
+
+    s_tas5711.initialized = false;
+}
+
 static bk_err_t tas5711_write_bytes(uint8_t reg, const uint8_t *data, uint32_t size)
 {
     bk_err_t ret;
@@ -417,7 +494,7 @@ bk_err_t tas5711_reset(void)
 
     if (tas5711_gpio_is_used(s_tas5711.config.pdn_gpio))
     {
-        bk_gpio_set_output_low(s_tas5711.config.pdn_gpio);
+        bk_gpio_set_output_high(s_tas5711.config.pdn_gpio);
     }
 
     if (tas5711_gpio_is_used(s_tas5711.config.reset_gpio))
@@ -445,21 +522,18 @@ bk_err_t tas5711_init(const tas5711_config_t *config)
         return BK_ERR_PARAM;
     }
 
+    if (s_tas5711.initialized)
+    {
+        return BK_OK;
+    }
+
     s_tas5711.config = *config;
     s_tas5711.initialized = true;
-
-    gpio_dev_unmap(s_tas5711.config.sda_gpio);
-    gpio_dev_unmap(s_tas5711.config.scl_gpio);
-    bk_gpio_pull_up(s_tas5711.config.sda_gpio);
-    bk_gpio_pull_up(s_tas5711.config.scl_gpio);
-    tas5711_sda_high();
-    tas5711_scl_high();
-    tas5711_sda_release();
 
     if (tas5711_gpio_is_used(s_tas5711.config.pdn_gpio))
     {
         tas5711_configure_output_gpio(s_tas5711.config.pdn_gpio);
-        bk_gpio_set_output_low(s_tas5711.config.pdn_gpio);
+        bk_gpio_set_output_high(s_tas5711.config.pdn_gpio);
     }
 
     if (tas5711_gpio_is_used(s_tas5711.config.reset_gpio))
@@ -468,16 +542,25 @@ bk_err_t tas5711_init(const tas5711_config_t *config)
         bk_gpio_set_output_high(s_tas5711.config.reset_gpio);
     }
 
+    tas5711_configure_i2c_gpio();
+    tas5711_i2c_bus_idle();
+
+    ret = tas5711_scan_i2c_bus();
+    if (ret != BK_OK)
+    {
+        goto init_failed;
+    }
+
     ret = tas5711_reset();
     if (ret != BK_OK)
     {
-        return ret;
+        goto init_failed;
     }
 
     ret = tas5711_write_register(TAS571X_OSC_TRIM_REG, 0x00);
     if (ret != BK_OK)
     {
-        return ret;
+        goto init_failed;
     }
 
     rtos_delay_milliseconds(50);
@@ -487,17 +570,27 @@ bk_err_t tas5711_init(const tas5711_config_t *config)
         ret = tas5711_apply_default_config();
         if (ret != BK_OK)
         {
-            return ret;
+            goto init_failed;
         }
     }
 
     ret = tas5711_set_mute(s_tas5711.config.start_muted);
     if (ret != BK_OK)
     {
-        return ret;
+        goto init_failed;
     }
 
-    return tas5711_set_shutdown(false);
+    ret = tas5711_set_shutdown(false);
+    if (ret != BK_OK)
+    {
+        goto init_failed;
+    }
+
+    return BK_OK;
+
+init_failed:
+    tas5711_init_failed_cleanup();
+    return ret;
 }
 
 bk_err_t tas5711_deinit(void)
@@ -509,6 +602,12 @@ bk_err_t tas5711_deinit(void)
 
     tas5711_set_mute(true);
     tas5711_set_shutdown(true);
+
+    if (tas5711_gpio_is_used(s_tas5711.config.pdn_gpio))
+    {
+        bk_gpio_set_output_low(s_tas5711.config.pdn_gpio);
+    }
+
     s_tas5711.initialized = false;
     os_memset(&s_tas5711.config, 0, sizeof(s_tas5711.config));
     return BK_OK;

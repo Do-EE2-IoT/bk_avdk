@@ -3,6 +3,7 @@
     "lcd_panel_devices.h": "c",
     "lcd_types.h": "c",
     "bk_https.h": "c",
-    "wifi.h": "c"
+    "wifi.h": "c",
+    "bk_websocket_client.h": "c"
   }
 }

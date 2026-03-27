@@ -13,6 +13,8 @@
 #include "gatt/dm_gatts.h"
 #include "hogpd/hogpd_demo.h"
 #include "wifi_boarding/wifi_boarding_demo.h"
+#include <driver/gpio.h>
+#include "gpio_driver.h"
 
 #define AUTO_ENABLE_BLUETOOTH_DEMO 1
 
@@ -44,6 +46,11 @@ int main(void)
     media_service_init();
 
 #if CONFIG_SYS_CPU0
+
+    gpio_dev_unmap(GPIO_27);
+    bk_gpio_disable_input(GPIO_27);
+    bk_gpio_enable_output(GPIO_27);
+    bk_gpio_set_output_high(GPIO_27);
 
     if (!ate_is_enabled())
     {
@@ -89,5 +96,6 @@ int main(void)
     }
 
 #endif
+
     return 0;
 }
