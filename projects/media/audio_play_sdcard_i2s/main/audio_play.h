@@ -23,6 +23,12 @@ extern "C"
 
 	bk_err_t audio_play_sdcard_i2s_stop(void);
 
+	bk_err_t audio_play_pcm_i2s_start(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample);
+
+	bk_err_t audio_play_pcm_i2s_write(uint8_t *data, uint32_t size, uint32_t timeout_ms);
+
+	bk_err_t audio_play_pcm_i2s_stop(void);
+
 #ifdef __cplusplus
 }
 #endif

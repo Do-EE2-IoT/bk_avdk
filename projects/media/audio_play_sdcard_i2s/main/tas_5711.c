@@ -289,14 +289,14 @@ static bk_err_t tas5711_scan_i2c_bus(void)
     bool expected_found = false;
     uint32_t address;
 
-    BK_LOGI(TAS5711_TAG, "I2C scan start, expect device at 0x%02X\r\n",
+    BK_LOGE(TAS5711_TAG, "I2C scan start, expect device at 0x%02X\r\n",
             s_tas5711.config.i2c_address);
 
     for (address = 0; address <= 0x7FU; ++address)
     {
         if (tas5711_i2c_probe_address((uint8_t)address))
         {
-            BK_LOGI(TAS5711_TAG, "I2C device found at 0x%02X\r\n", (unsigned int)address);
+            BK_LOGE(TAS5711_TAG, "I2C device found at 0x%02X\r\n", (unsigned int)address);
             ++found_count;
 
             if (address == s_tas5711.config.i2c_address)
@@ -306,7 +306,7 @@ static bk_err_t tas5711_scan_i2c_bus(void)
         }
     }
 
-    BK_LOGI(TAS5711_TAG, "I2C scan done, found %lu device(s)\r\n", (unsigned long)found_count);
+    BK_LOGW(TAS5711_TAG, "I2C scan done, found %lu device(s)\r\n", (unsigned long)found_count);
 
     if (!expected_found)
     {

@@ -4,6 +4,7 @@ set(incs .
 
 set(srcs
 		app_main.c
+		app_ws.c
 		ota_github.c
 		tas_5711.c
 	)
@@ -16,7 +17,7 @@ endif()
 
 set(priv_req bk_init bk_cli avdk_libs media_service ota)
 
-list(APPEND priv_req multimedia)
+list(APPEND priv_req multimedia bk_websocket bk_event)
 
 if (CONFIG_OVERRIDE_FLASH_PARTITION)
 	list(APPEND srcs

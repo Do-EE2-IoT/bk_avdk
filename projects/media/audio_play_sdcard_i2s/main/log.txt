@@ -1,0 +1,159 @@
+PS D:\armino\loa_am_tran> python .\send_audio_48Khz.py
+🌐 WS server listening on 0.0.0.0:8765
+Client connected
+✅ PCM size: 27109568 bytes
+🔁 Converted to stereo | New size: 54219136 bytes
+📦 Chunk size: 3840 bytes
+📊 Total data: 54219136 bytes
+🚀 Start streaming loop
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 3840 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 7680 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 11520 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 15360 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 19200 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 23040 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 26880 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 30720 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 34560 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 38400 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 42240 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 46080 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 49920 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 53760 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 57600 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 61440 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 65280 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 69120 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 72960 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 76800 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 80640 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 84480 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 88320 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 92160 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 96000 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 99840 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 103680 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 107520 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 111360 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 115200 bytes
+➡️ Sending chunk...
+✅ Sent
+📤 Sent chunk: 3840 bytes | Total: 119040 bytes
+➡️ Sending chunk...
+
+
+224):tas5711_init failed: -1
+cli:W(348):BK STA connected LUMI
+cli:W(386):BK STA got ip
+WEBSOCKE:E(388):----------connect server-------
+WEBSOCKE:E(388):[sock=0] Resolved IPv4 address: 10.10.60.87
+WEBSOCKE:E(388):[sock=0] set_socket_non_blocking, non_block:1
+WEBSOCKE:E(388):[sock=0] Connecting to server. HOST: 10.1
+0.60.87, Port: 8765
+WEBSOCKE:E(390):EINPROGRESS
+WEBSOCKE:E(550):[sock=0] select() occur
+WEBSOCKE:E(550):[sock=0] no blocking connected
+WEBSOCKE:E(550):[sock=0] set_socket_non_blocking, non_block:0
+(550):http request:
+(550):G(550):E(550):T(550): (550):/(552): (552):H(552):T(552):T(552):P(552):/(552):1(552):.(552):1(552):
+(552):
+(552):C(552):o(552):n(552):n(552):e(552):c(552):t(552):i(552):o(552):n(552)::(552): (552):U(552):p(552):g(552):r(552):a(552):d(552):e(552):
+(552):
+(552):H(552):o(552):s(552):t(552)::(552): (552):1(552):0(552):.(552):1(552):0(552):.(552):6(552):0(552):.(552):8(552):7(552)::(552):8(552):7(552):6(552):5(552):
+(552):
+(552):O(552):r(552):i(552):g(552):i(552):n(552)::(552): (552):h(552):t(552):t(552):p(552)::(552):/(552):/(552):1(552):0(552):.(552):1(552):0(552):.(552):6(552):0(552):.(552):8(552):7(552):
+(552):
+(552):U(552):s(552):e(552):r(552):-(552):A(552):g(552):e(552):n(552):t(552)::(552): (552):B(552):E(552):K(552):E(552):N(552): (552):W(552):e(552):b(552):s(552):o(552):c(552):k(552):e(552):t(552): (552):C(552):l(552):i(552):e(552):n(552):t(552):
+(552):
+(552):U(552):p(552):g(552):r(552):a(552):d(552):e(552)::(552): (552):w(552):e(552):b(552):s(552):o(552):c(552):k(552):e(552):t(552):
+(552):
+(552):S(552):e(552):c(552):-(554):W(554):e(554):b(554):S(554):o(554):c(554):k(554):e(554):t(554):-(554):V(554):e(554):r(554):s(554):i(554):o(554):n(554)::(554): (554):1(554):3(554):
+(554):
+(554):S(554):e(554):c(554):-(554):W(554):e(554):b(554):S(554):o(554):c(554):k(554):e(554):t(554):-(554):K(554):e(554):y(554)::(554): (554):q(554):Y(554):1(554):5(554):I(554):r(554):7(554):x(554):m(554):
+WEBSOCKE:E(554):ws_connect, connect write len:219
+WEBSOCKE:E(564):Read header chunk 204, current header size: 204
+(564):server buffer:
+(564):H(564):T(564):T(564):P(564):/(564):1(564):.(564):1(564): (564):1(564):0(564):1(564): (564):S(564):w(564):i(564):t(564):c(564):h(564):i(564):n(564):g(564): (564):P(564):r(564):o(564):t(564):o(564):c(564):o(564):l(564):s(564):
+(564):
+(564):D(564):a(564):t(564):e(564)::(566): (566):M(566):o(566):n(566):,(566): (566):3(566):0(566): (566):M(566):a(566):r(566): (566):2(566):0(566):2(566):6(566): (566):0(566):4(566)::(566):4(566):0(566)::(566):2(566):7(566): (566):G(566):M(566):T(566):
+(566):
+(566):U(566):p(566):g(566):r(566):a(566):d(566):e(566)::(566): (566):w(566):e(566):b(566):s(566):o(566):c(566):k(566):e(566):t(566):
+(566):
+(566):C(566):o(566):n(566):n(566):e(566):c(566):t(566):i(566):o(566):n(566)::(566): (566):U(566):p(566):g(566):r(566):a(566):d(566):e(566):
+(566):
+(566):S(566):e(566):c(566):-(566):W(566):e(566):b(566):S(566):o(566):c(566):k(566):e(566):t(566):-(566):A(566):c(566):c(566):e(566):p(566):t(566)::(566): (566):B(566):u(566):y(566):g(566):N(566):s(566):B(566):C(566):s(566):d(566):U(566):M(566):V(566):Q(566):a(566):c(566):O(566):T(566):N(566):H(566):u(566):G(566):9(566):R(566):f(566):E(566):Y(566):=(566):
+(566):
+(566):S(566):e(566):r(566):v(566):e(566):r(566)::(566): (566):P(566):y(566):t(566):h(566):o(566):n(566):/(566):3(566):.(566):9(566): (566):w(566):e(566):b(566):s(566):o(566):c(566):k(566):e(566):t(566):s(566):/(566):1(566):5(566):.(566):0(566):.(566):1(566):
+WEBSOCKE:E(568):server key=BuygNsBCsdUMVQacOTNHuG9RfEY=
+
+WEBSOCKE:E(568):send_key=qY15Ir7xm0BNK7dxN6zTHA==
+
+WEBSOCKE:E(568):expected_server_key=BuygNsBCsdUMVQacOTNHuG9RfEY=
+
+i2s:E(568
+):apll_clk: 90316800, sample_rate: 44100, smp_ratio: 15 
+i2s:E(568):bit_ratio: 32, bit_ratio_b: 0 
+i2s:E(568):apll_clk: 98304000, sample_rate: 48000, smp_ratio: 15 
+i2s:E(568):bit_ratio: 32, bit_ratio_b: 0 
+(568):PCM I2s start ok
+hrt:E(2134):IPC retry to start core1
