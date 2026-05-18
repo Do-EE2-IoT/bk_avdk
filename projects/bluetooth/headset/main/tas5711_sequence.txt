@@ -1,0 +1,34 @@
+TAS5711 Startup Sequence
+1. Power & Hardware Reset
+1. Cấp nguồn: AVDD, DVDD, PVDD_A, PVDD_B, PVDD_C, PVDD_D
+2. RESET pin = HIGH (active low, nên HIGH = bình thường)
+3. Chờ 100µs
+4. RESET pin = LOW  (bắt đầu reset)
+5. Chờ 100µs
+6. RESET pin = HIGH (kết thúc reset)
+7. Chờ 13.5ms ~ 20ms
+2. I2C Register Init
+Write 0x1B (OSC_TRIM)   = 0x00   ← kích oscillator
+Chờ 50ms ~ 60ms                  ← đợi oscillator ổn định
+3. Audio Format
+Write 0x04 (SDI)        = 0x03   ← I2S, 16-bit
+                        = 0x04   ← I2S, 20-bit
+                        = 0x05   ← I2S, 24-bit
+4. Unmute & Active
+Write 0x05 (SYS_CTRL_2) = 0x00   ← không shutdown
+Write 0x06 (SOFT_MUTE)  = 0x00   ← unmute CH1 + CH2
+5. Volume
+Write 0x07 (MVOL)       = 0x10   ← master volume -8dB
+Write 0x08 (CH1_VOL)    = 0x10   ← CH1 volume -8dB
+Write 0x09 (CH2_VOL)    = 0x10   ← CH2 volume -8dB
+6. Verify (đọc lại)
+Read  0x05 (SYS_CTRL_2) → phải = 0x00
+Read  0x06 (SOFT_MUTE)  → phải = 0x00
+Read  0x04 (SDI)        → phải = 0x03 (hoặc giá trị bạn đã ghi)
+Read  0x07 (MVOL)       → phải = 0x10
+Read  0x08 (CH1_VOL)    → phải = 0x10
+Read  0x09 (CH2_VOL)    → phải = 0x10
+Điều kiện môi trường
+- I2S master clock (MCLK) phải có tín hiệu TRƯỚC khi ghi register
+- PVDD_A/B/C/D: thường 12V-26V tùy thiết kế
+- Loa nối BTL: OUT_A(+) OUT_B(-) = CH1 | OUT_C(+) OUT_D(-) = CH2

@@ -107,8 +107,10 @@ extern "C"
     bk_err_t tas5711_set_channel_volume(uint8_t ch1_value, uint8_t ch2_value);
     bk_err_t tas5711_configure_serial_audio(tas5711_serial_format_t format, uint8_t sample_bits);
     bk_err_t tas5711_read_basic_status(uint32_t *device_id, uint32_t *error_status);
+    bk_err_t tas5711_dump_core_registers(void);
 
     const tas5711_reg_default_t *tas5711_get_default_registers(uint32_t *count);
+    bk_err_t tas_5711_configure_clock_control(uint8_t val);
 
 #ifdef __cplusplus
 }

@@ -8,6 +8,9 @@
 #define TAS5711_DEFAULT_DELAY_COUNT 25U
 #define TAS5711_DEFAULT_RESET_DELAY_MS 50U
 #define TAS5711_I2C_TIMEOUT_RETRY 2U
+#define TAS5711_SHUTDOWN_ENTER_DELAY_MS 5U
+#define TAS5711_SHUTDOWN_EXIT_DELAY_MS 300U
+#define TAS5711_SOFT_MUTE_ALL_CHANNELS ((1U << TAS571X_SOFT_MUTE_CH1_SHIFT) | (1U << TAS571X_SOFT_MUTE_CH2_SHIFT))
 
 typedef struct
 {
@@ -18,13 +21,26 @@ typedef struct
 static tas5711_context_t s_tas5711 = {0};
 
 static const tas5711_reg_default_t s_tas5711_defaults[] = {
-    {TAS571X_SDI_REG, 0x05},
     {TAS571X_SYS_CTRL_2_REG, 0x40},
-    {TAS571X_SOFT_MUTE_REG, 0x00},
-    {TAS571X_MVOL_REG, 0xFF},
-    {TAS571X_CH1_VOL_REG, 0x30},
-    {TAS571X_CH2_VOL_REG, 0x30},
-    {TAS571X_OSC_TRIM_REG, 0x82},
+    {TAS571X_SOFT_MUTE_REG, TAS5711_SOFT_MUTE_ALL_CHANNELS},
+};
+
+typedef struct
+{
+    uint8_t reg;
+    const char *name;
+} tas5711_dump_reg_t;
+
+static const tas5711_dump_reg_t s_tas5711_dump_regs[] = {
+    {TAS571X_SYS_CTRL_2_REG, "SYS_CTRL_2"},
+    {TAS571X_SOFT_MUTE_REG, "SOFT_MUTE"},
+    {TAS571X_SDI_REG, "SDI"},
+    {TAS571X_MVOL_REG, "MVOL"},
+    {TAS571X_CH1_VOL_REG, "CH1_VOL"},
+    {TAS571X_CH2_VOL_REG, "CH2_VOL"},
+    {TAS571X_ERR_STATUS_REG, "ERR_STATUS"},
+    {TAS571X_CLK_CTRL_REG, "CLK_CTRL"},
+    {TAS571X_INPUT_MUX_REG, "INPUT_MUX"},
 };
 
 static inline bool tas5711_gpio_is_used(gpio_id_t gpio)
@@ -494,13 +510,16 @@ bk_err_t tas5711_reset(void)
 
     if (tas5711_gpio_is_used(s_tas5711.config.pdn_gpio))
     {
+        os_printf("Drive PDN to high \r\n");
         bk_gpio_set_output_high(s_tas5711.config.pdn_gpio);
     }
 
     if (tas5711_gpio_is_used(s_tas5711.config.reset_gpio))
     {
+        os_printf("Drive RESET PIN to low \r\n");
         bk_gpio_set_output_low(s_tas5711.config.reset_gpio);
         rtos_delay_milliseconds(1);
+        os_printf("Drive RESET PIN to high \r\n");
         bk_gpio_set_output_high(s_tas5711.config.reset_gpio);
     }
 
@@ -539,28 +558,40 @@ bk_err_t tas5711_init(const tas5711_config_t *config)
     if (tas5711_gpio_is_used(s_tas5711.config.reset_gpio))
     {
         tas5711_configure_output_gpio(s_tas5711.config.reset_gpio);
-        bk_gpio_set_output_high(s_tas5711.config.reset_gpio);
+        bk_gpio_set_output_low(s_tas5711.config.reset_gpio);
     }
 
     tas5711_configure_i2c_gpio();
     tas5711_i2c_bus_idle();
-
-    ret = tas5711_scan_i2c_bus();
-    if (ret != BK_OK)
-    {
-        goto init_failed;
-    }
 
     ret = tas5711_reset();
     if (ret != BK_OK)
     {
         goto init_failed;
     }
+    else
+    {
+        BK_LOGW(TAS5711_TAG, "tas5711_reset success\r\n");
+    }
+
+    ret = tas5711_scan_i2c_bus();
+    if (ret != BK_OK)
+    {
+        goto init_failed;
+    }
+    else
+    {
+        BK_LOGW(TAS5711_TAG, "tas5711_scan_i2c_bus success\r\n");
+    }
 
     ret = tas5711_write_register(TAS571X_OSC_TRIM_REG, 0x00);
     if (ret != BK_OK)
     {
         goto init_failed;
+    }
+    else
+    {
+        BK_LOGW(TAS5711_TAG, "tas5711_write_register TAS571X_OSC_TRIM_REG success\r\n");
     }
 
     rtos_delay_milliseconds(50);
@@ -574,7 +605,7 @@ bk_err_t tas5711_init(const tas5711_config_t *config)
         }
     }
 
-    ret = tas5711_set_mute(s_tas5711.config.start_muted);
+    ret = tas5711_set_mute(false);
     if (ret != BK_OK)
     {
         goto init_failed;
@@ -595,6 +626,7 @@ init_failed:
 
 bk_err_t tas5711_deinit(void)
 {
+    BK_LOGW(TAS5711_TAG, "tas5711_deinit called\r\n");
     if (!s_tas5711.initialized)
     {
         return BK_OK;
@@ -716,22 +748,51 @@ bk_err_t tas5711_write_biquad(uint8_t reg, const uint32_t coefficients[5])
 bk_err_t tas5711_set_shutdown(bool enable)
 {
     uint32_t value = enable ? TAS571X_SYS_CTRL_2_SDN_MASK : 0U;
-    return tas5711_write_register(TAS571X_SYS_CTRL_2_REG, value);
+    bk_err_t ret;
+
+    BK_LOGW(TAS5711_TAG, "tas5711_set_shutdown enable=%u value=0x%02lX\n",
+            (unsigned int)enable, (unsigned long)value);
+
+    ret = tas5711_write_register(TAS571X_SYS_CTRL_2_REG, value);
+    if (ret != BK_OK)
+    {
+        return ret;
+    }
+
+    if (enable)
+    {
+        rtos_delay_milliseconds(TAS5711_SHUTDOWN_ENTER_DELAY_MS);
+    }
+    else
+    {
+        rtos_delay_milliseconds(TAS5711_SHUTDOWN_EXIT_DELAY_MS);
+    }
+
+    return BK_OK;
 }
 
 bk_err_t tas5711_set_mute(bool mute)
 {
-    uint32_t value = mute ? ((1U << TAS571X_SOFT_MUTE_CH1_SHIFT) | (1U << TAS571X_SOFT_MUTE_CH2_SHIFT)) : 0U;
+    uint32_t value = mute ? TAS5711_SOFT_MUTE_ALL_CHANNELS : 0U;
+
+    BK_LOGW(TAS5711_TAG, "tas5711_set_mute mute=%u value=0x%02lX\n",
+            (unsigned int)mute, (unsigned long)value);
+
     return tas5711_write_register(TAS571X_SOFT_MUTE_REG, value);
 }
 
 bk_err_t tas5711_set_master_volume(uint8_t value)
 {
+    BK_LOGW(TAS5711_TAG, "tas5711_set_master_volume value=0x%02X\n", value);
+
     return tas5711_write_register(TAS571X_MVOL_REG, value);
 }
 
 bk_err_t tas5711_set_channel_volume(uint8_t ch1_value, uint8_t ch2_value)
 {
+    BK_LOGW(TAS5711_TAG, "tas5711_set_channel_volume ch1=0x%02X ch2=0x%02X\n",
+            ch1_value, ch2_value);
+
     bk_err_t ret = tas5711_write_register(TAS571X_CH1_VOL_REG, ch1_value);
     if (ret != BK_OK)
     {
@@ -769,7 +830,19 @@ bk_err_t tas5711_configure_serial_audio(tas5711_serial_format_t format, uint8_t 
         value += 1U;
     }
 
+    BK_LOGW(TAS5711_TAG, "tas5711_configure_serial_audio format=%u sample_bits=%u value=0x%02lX\n",
+            (unsigned int)format,
+            (unsigned int)sample_bits,
+            (unsigned long)(value & TAS571X_SDI_FMT_MASK));
+
     return tas5711_write_register(TAS571X_SDI_REG, value & TAS571X_SDI_FMT_MASK);
+}
+
+bk_err_t tas_5711_configure_clock_control(uint8_t val)
+{
+    BK_LOGW(TAS5711_TAG, "tas_5711_configure_clock_control value=0x%02X\n", val);
+
+    return tas5711_write_register(TAS571X_CLK_CTRL_REG, val);
 }
 
 bk_err_t tas5711_read_basic_status(uint32_t *device_id, uint32_t *error_status)
@@ -788,6 +861,33 @@ bk_err_t tas5711_read_basic_status(uint32_t *device_id, uint32_t *error_status)
     }
 
     return tas5711_read_register(TAS571X_ERR_STATUS_REG, error_status);
+}
+
+bk_err_t tas5711_dump_core_registers(void)
+{
+    uint32_t index;
+
+    for (index = 0; index < (sizeof(s_tas5711_dump_regs) / sizeof(s_tas5711_dump_regs[0])); ++index)
+    {
+        uint32_t value = 0;
+        bk_err_t ret = tas5711_read_register(s_tas5711_dump_regs[index].reg, &value);
+
+        if (ret != BK_OK)
+        {
+            BK_LOGW(TAS5711_TAG, "dump %s(0x%02X) read failed: %d\n",
+                    s_tas5711_dump_regs[index].name,
+                    s_tas5711_dump_regs[index].reg,
+                    ret);
+            return ret;
+        }
+
+        BK_LOGW(TAS5711_TAG, "dump %s(0x%02X)=0x%02lX\n",
+                s_tas5711_dump_regs[index].name,
+                s_tas5711_dump_regs[index].reg,
+                (unsigned long)value);
+    }
+
+    return BK_OK;
 }
 
 const tas5711_reg_default_t *tas5711_get_default_registers(uint32_t *count)

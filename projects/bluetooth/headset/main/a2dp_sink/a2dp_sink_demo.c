@@ -1429,6 +1429,7 @@ static void speaker_task(void *arg)
 
     bk_bt_dac_set_gain(s_a2dp_vol >> 1);
 
+    os_printf("%s sample_rate %d \n", __func__, sample_rate);
     ret = audio_play_pcm_i2s_start(sample_rate, 2, 16);
     if (ret != BK_OK)
     {
