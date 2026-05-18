@@ -4,6 +4,7 @@
     "lcd_types.h": "c",
     "bk_https.h": "c",
     "wifi.h": "c",
-    "bk_websocket_client.h": "c"
+    "bk_websocket_client.h": "c",
+    "wifi_boarding_demo.h": "c"
   }
 }

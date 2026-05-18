@@ -155,7 +155,7 @@ static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
     for (uint32 i = 0; i < sample_cnt; i++)
     {
         int32_t sample = pcm[i];
-        sample *= 4; // x4 gain
+        sample *= 1; // x4 gain
 
         // Clamp chống overflow
         if (sample > 32767)

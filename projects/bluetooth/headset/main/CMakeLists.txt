@@ -24,7 +24,8 @@ set(incs .
 set(srcs
     armino_main.c
     audio_play.c
-    tas_5711.c
+    digital_mic.c
+    tas_5805.c
     )
 
 if (CONFIG_OVERRIDE_FLASH_PARTITION)

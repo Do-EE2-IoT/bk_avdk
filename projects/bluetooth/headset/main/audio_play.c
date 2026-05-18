@@ -20,6 +20,7 @@
 #include <driver/i2s_types.h>
 #include <driver/audio_ring_buff.h>
 #include "audio_play.h"
+#include "tas_5805.h"
 
 #define TAG "AUD_PLAY_I2S"
 
@@ -263,7 +264,7 @@ static bk_err_t audio_play_i2s_hw_start(uint32_t sample_rate, RingBufferContext 
 	i2s_config.data_length = 16;
 	i2s_config.store_mode = I2S_LRCOM_STORE_16R16L;
 
-	ret = (I2S_GPIO_GROUP_2, &i2s_config);
+	ret = bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);
 	if (ret != BK_OK)
 	{
 		BK_LOGE(TAG, "bk_i2s_init fail, ret:%d\n", ret);
@@ -301,12 +302,29 @@ static bk_err_t audio_play_i2s_hw_start(uint32_t sample_rate, RingBufferContext 
 		return ret;
 	}
 
+	ret = tas5805m_start(sample_rate);
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "tas5805m_start fail, ret:%d\n", ret);
+		bk_i2s_stop();
+		bk_i2s_chl_deinit(I2S_CHANNEL_1, I2S_TXRX_TYPE_TX);
+		bk_i2s_deinit();
+		bk_i2s_driver_deinit();
+		return ret;
+	}
+
 	return BK_OK;
 }
 
 static void audio_play_i2s_hw_stop(void)
 {
 	bk_err_t ret;
+
+	ret = tas5805m_stop();
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "tas5805m_stop fail, ret:%d\n", ret);
+	}
 
 	ret = bk_i2s_stop();
 	if (ret != BK_OK)

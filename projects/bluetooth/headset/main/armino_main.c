@@ -13,44 +13,25 @@
 #include "gatt/dm_gatts.h"
 #include "hogpd/hogpd_demo.h"
 #include "wifi_boarding/wifi_boarding_demo.h"
-#include "tas_5711.h"
+#include "digital_mic.h"
+#include "tas_5805.h"
+
+#define HEADSET_MODE_TEST_BLUETOOTH_I2S 1
+#define HEADSET_MODE_DMIC_AND_I2S 2
+
+#ifndef HEADSET_APP_MODE
+#define HEADSET_APP_MODE HEADSET_MODE_DMIC_AND_I2S
+#endif
 
 #define AUTO_ENABLE_BLUETOOTH_DEMO 1
-#define TAS5711_APP_SDA GPIO_1
-#define TAS5711_APP_SCL GPIO_0
-#define TAS5711_APP_RESET GPIO_13
-#define TAS5711_APP_PDN GPIO_2
-#define TAS5711_APP_I2C_DELAY_INIT 25U
-#define TAS5711_APP_TEST_MVOL 0x30
-#define TAS5711_APP_TEST_CHVOL 0x30
-#define TAS5711_APP_SERIAL_FORMAT TAS5711_SERIAL_FORMAT_I2S
-#define TAS5711_APP_SERIAL_BITS 16U
-#define TAS5711_APP_TAG "TAS5711_APP"
-
-static bk_err_t tas5711_expect_register(uint8_t reg, uint32_t expected, const char *name)
-{
-    uint32_t value = 0;
-    bk_err_t ret = tas5711_read_register(reg, &value);
-
-    if (ret != BK_OK)
-    {
-        BK_LOGE(TAS5711_APP_TAG, "Read %s(0x%02X) failed: %d\n", name, reg, ret);
-        return ret;
-    }
-
-    if (value != expected)
-    {
-        BK_LOGE(TAS5711_APP_TAG,
-                "%s(0x%02X) mismatch, expected=0x%02lX actual=0x%02lX\n",
-                name,
-                reg,
-                (unsigned long)expected,
-                (unsigned long)value);
-        return BK_FAIL;
-    }
-
-    return BK_OK;
-}
+#define TAS5805M_APP_SDA GPIO_1
+#define TAS5805M_APP_SCL GPIO_0
+#define TAS5805M_APP_PDN GPIO_12
+#define TAS5805M_APP_ADR GPIO_28
+#define TAS5805M_APP_ADR_HIGH 0
+#define TAS5805M_APP_I2C_DELAY_INIT 25U
+#define TAS5805M_APP_I2C_ADDRESS TAS5805M_I2C_ADDRESS_DEFAULT
+#define TAS5805M_APP_TAG "TAS5805M_APP"
 
 extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 
@@ -67,137 +48,43 @@ static void user_app_main(void)
 {
 }
 
-static void tas5711_demo_init(void)
+static void tas5805m_demo_init(void)
 {
-    static tas5711_config_t tas_cfg;
+    static tas5805m_config_t tas_cfg;
     bk_err_t ret;
-    uint32_t device_id = 0;
-    uint32_t error_status = 0;
 
-    tas5711_init_default_config(&tas_cfg);
-    tas_cfg.sda_gpio = TAS5711_APP_SDA;
-    tas_cfg.scl_gpio = TAS5711_APP_SCL;
-    tas_cfg.reset_gpio = TAS5711_APP_RESET;
-    tas_cfg.pdn_gpio = TAS5711_APP_PDN;
-    tas_cfg.delay_count = TAS5711_APP_I2C_DELAY_INIT;
+    tas5805m_init_default_config(&tas_cfg);
+    tas_cfg.sda_gpio = TAS5805M_APP_SDA;
+    tas_cfg.scl_gpio = TAS5805M_APP_SCL;
+    tas_cfg.pdn_gpio = TAS5805M_APP_PDN;
+    tas_cfg.adr_gpio = TAS5805M_APP_ADR;
+    tas_cfg.adr_high = TAS5805M_APP_ADR_HIGH;
+    tas_cfg.i2c_address = TAS5805M_APP_I2C_ADDRESS;
+    tas_cfg.delay_count = TAS5805M_APP_I2C_DELAY_INIT;
     tas_cfg.start_muted = false;
+    tas_cfg.scan_bus = true;
 
-    ret = tas5711_init(&tas_cfg);
+    ret = tas5805m_init(&tas_cfg);
     if (ret != BK_OK)
     {
-        BK_LOGE(TAS5711_APP_TAG, "tas5711_init failed: %d\n", ret);
+        BK_LOGE(TAS5805M_APP_TAG, "tas5805m_init failed: %d\n", ret);
         return;
     }
 
-    BK_LOGW(TAS5711_APP_TAG, "Configure TAS5711 serial format=%u bits=%u\n",
-            (unsigned int)TAS5711_APP_SERIAL_FORMAT,
-            (unsigned int)TAS5711_APP_SERIAL_BITS);
-    ret = tas5711_configure_serial_audio(TAS5711_APP_SERIAL_FORMAT, TAS5711_APP_SERIAL_BITS);
+    ret = tas5805m_dump_status();
     if (ret != BK_OK)
     {
-        BK_LOGE(TAS5711_APP_TAG, "tas5711_configure_serial_audio failed: %d\n", ret);
+        BK_LOGE(TAS5805M_APP_TAG, "tas5805m_dump_status failed: %d\n", ret);
         return;
     }
 
-    // ret = tas_5711_configure_clock_control(0b01101100);
-    // if (ret != BK_OK)
-    // {
-    //     BK_LOGE(TAS5711_APP_TAG, "tas_5711_configure_clock_control failed: %d\n", ret);
-    //     return;
-    // }
-
-    BK_LOGW(TAS5711_APP_TAG, "Set TAS5711 test volume MVOL=0x%02X CHVOL=0x%02X\n",
-            TAS5711_APP_TEST_MVOL, TAS5711_APP_TEST_CHVOL);
-    ret = tas5711_set_master_volume(TAS5711_APP_TEST_MVOL);
-    if (ret != BK_OK)
-    {
-        BK_LOGE(TAS5711_APP_TAG, "tas5711_set_master_volume failed: %d\n", ret);
-        return;
-    }
-
-    ret = tas5711_set_channel_volume(TAS5711_APP_TEST_CHVOL, TAS5711_APP_TEST_CHVOL);
-    if (ret != BK_OK)
-    {
-        BK_LOGE(TAS5711_APP_TAG, "tas5711_set_channel_volume failed: %d\n", ret);
-        return;
-    }
-
-    ret = tas5711_expect_register(TAS571X_SDI_REG, 0x03, "SDI");
-    if (ret != BK_OK)
-    {
-        return;
-    }
-
-    ret = tas5711_expect_register(TAS571X_SYS_CTRL_2_REG, TAS571X_SYS_CTRL_2_SDN_MASK, "SYS_CTRL_2");
-    if (ret != BK_OK)
-    {
-        return;
-    }
-
-    ret = tas5711_expect_register(TAS571X_SOFT_MUTE_REG, 0x03, "SOFT_MUTE");
-    if (ret != BK_OK)
-    {
-        return;
-    }
-
-    ret = tas5711_expect_register(TAS571X_MVOL_REG, TAS5711_APP_TEST_MVOL, "MVOL");
-    if (ret != BK_OK)
-    {
-        return;
-    }
-
-    ret = tas5711_expect_register(TAS571X_CH1_VOL_REG, TAS5711_APP_TEST_CHVOL, "CH1_VOL");
-    if (ret != BK_OK)
-    {
-        return;
-    }
-
-    ret = tas5711_expect_register(TAS571X_CH2_VOL_REG, TAS5711_APP_TEST_CHVOL, "CH2_VOL");
-    if (ret != BK_OK)
-    {
-        return;
-    }
-
-    ret = tas5711_set_shutdown(false);
-    if (ret != BK_OK)
-    {
-        BK_LOGE(TAS5711_APP_TAG, "tas5711_set_shutdown(false) failed: %d\n", ret);
-        return;
-    }
-
-    if (!tas_cfg.start_muted)
-    {
-        ret = tas5711_set_mute(false);
-        if (ret != BK_OK)
-        {
-            BK_LOGE(TAS5711_APP_TAG, "tas5711_set_mute(false) failed: %d\n", ret);
-            return;
-        }
-    }
-
-    ret = tas5711_dump_core_registers();
-    if (ret != BK_OK)
-    {
-        BK_LOGE(TAS5711_APP_TAG, "tas5711_dump_core_registers failed: %d\n", ret);
-        return;
-    }
-
-    ret = tas5711_read_basic_status(&device_id, &error_status);
-    if (ret == BK_OK)
-    {
-        BK_LOGI(TAS5711_APP_TAG, "TAS5711 ready, DEV_ID=0x%02X ERR=0x%02X\r\n",
-                (unsigned int)device_id, (unsigned int)error_status);
-    }
-    else
-    {
-        BK_LOGE(TAS5711_APP_TAG, "TAS5711 init ok but status read failed: %d\r\n", ret);
-    }
+    BK_LOGI(TAS5805M_APP_TAG, "TAS5805M ready; playback config will run after I2S clock starts\r\n");
 }
 
-static void tas5711_init_task(void *arg)
+static void tas5805m_init_task(void *arg)
 {
     rtos_delay_milliseconds(100);
-    tas5711_demo_init();
+    tas5805m_demo_init();
     rtos_delete_thread(NULL);
 }
 
@@ -207,22 +94,22 @@ static void report_error_task(void *arg)
     rtos_delay_milliseconds(5000);
     while (1)
     {
-        ret = tas5711_dump_core_registers();
+        ret = tas5805m_dump_status();
         if (ret != BK_OK)
         {
-            BK_LOGE(TAS5711_APP_TAG, "tas5711_dump_core_registers failed: %d\n", ret);
+            BK_LOGE(TAS5805M_APP_TAG, "tas5805m_dump_status failed: %d\n", ret);
             // return;
         }
         rtos_delay_milliseconds(3000);
     }
 }
 
-static bk_err_t tas5711_start_init_task(void)
+static bk_err_t tas5805m_start_init_task(void)
 {
     return rtos_create_thread(NULL,
                               5,
-                              "tas5711_init_task",
-                              (beken_thread_function_t)tas5711_init_task,
+                              "tas5805m_init_task",
+                              (beken_thread_function_t)tas5805m_init_task,
                               1024 * 3,
                               NULL);
 }
@@ -243,11 +130,15 @@ int main(void)
 
     bk_err_t ret;
 
-    ret = tas5711_start_init_task();
+#if (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
+    tas5805m_demo_init();
+#else
+    ret = tas5805m_start_init_task();
     if (ret != BK_OK)
     {
-        BK_LOGE(TAS5711_APP_TAG, "Failed to create TAS5711 init task: %d\n", ret);
+        BK_LOGE(TAS5805M_APP_TAG, "Failed to create TAS5805M init task: %d\n", ret);
     }
+#endif
 
     rtos_create_thread(NULL,
                        5,
@@ -256,6 +147,28 @@ int main(void)
                        1024 * 3,
                        NULL);
 
+#if (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
+    if (!ate_is_enabled())
+    {
+        digital_mic_config_t dmic_config;
+
+        digital_mic_init_default_config(&dmic_config);
+        dmic_config.sample_rate = DIGITAL_MIC_SAMPLE_RATE_DEFAULT;
+        dmic_config.frame_ms = 20;
+        dmic_config.frame_count = 4;
+        dmic_config.write_timeout_ms = 200;
+
+        ret = digital_mic_start(&dmic_config);
+        if (ret != BK_OK)
+        {
+            os_printf("DMIC_I2S ERROR: digital_mic_start failed: %d\r\n", ret);
+        }
+        else
+        {
+            os_printf("DMIC_I2S: app mode DMIC_AND_I2S started, bluetooth demo disabled\r\n");
+        }
+    }
+#elif (HEADSET_APP_MODE == HEADSET_MODE_TEST_BLUETOOTH_I2S)
     if (!ate_is_enabled())
     {
         bt_manager_init();
@@ -298,6 +211,9 @@ int main(void)
         cli_ble_wboarding_demo_init();
 #endif
     }
+#else
+#error "Unsupported HEADSET_APP_MODE"
+#endif
 
 #endif
 

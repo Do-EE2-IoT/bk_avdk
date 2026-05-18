@@ -67,13 +67,13 @@ int cli_audio_record_init(void)
 }
 
 /* ---- WiFi STA ---- */
-#define WIFI_SSID "PHUC DUNG"
-#define WIFI_PASSWORD "18071990"
+#define WIFI_SSID "LUMI"
+#define WIFI_PASSWORD "lumivn274"
 
 /* ---- WebSocket auto-connect ---- */
 #ifdef CONFIG_WEBSOCKET
 
-#define WS_SERVER_URI "ws://192.168.1.8:8765"
+#define WS_SERVER_URI "ws://10.10.60.87:8765"
 #define WS_AUTO_CONNECT_STACK_SIZE 3072
 #define WS_AUTO_CONNECT_PRIORITY 5
 
