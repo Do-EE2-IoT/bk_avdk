@@ -81,53 +81,25 @@ int main(void)
 
 
 #if (CONFIG_SYS_CPU0)
-		// if (BK_OK != audio_record_to_sdcard_start("test.wav", 16000))
-		// 	os_printf("start audio record to sdcard fail\n");
-		// else
-		// 	os_printf("start audio record to sdcard ok\n");
+	uint32_t d;
 
-		// os_printf("%s: media service init started!\n", __func__);
-		// uint32_t d;
+	if (BK_OK != audio_record_to_sdcard_start("test.wav", 16000))
+	{
+		os_printf("start audio record to sdcard fail\n");
+	}
+	else
+	{
+		os_printf("start audio record to sdcard ok\n");
+		os_printf("%s: polling DMIC FIFO with get_fifo()\n", __func__);
 
-		// gpio_dev_unmap(GPIO_8);
-
-		// // 2. Disable chức năng Input (để tránh nhiễu)
-		// bk_gpio_disable_input(GPIO_8);
-
-		// // 3. Enable chức năng Output
-		// bk_gpio_enable_output(GPIO_8);
-
-		// // 4. Set mức logic để bật Loa (Ví dụ: Active High)
-		// // bk_gpio_set_output_high(GPIO_8);
-
-		// gpio_dev_unmap(GPIO_9);
-
-		// // 2. Disable chức năng Input (để tránh nhiễu)
-		// bk_gpio_disable_input(GPIO_9);
-
-		// // 3. Enable chức năng Output
-		// bk_gpio_enable_output(GPIO_9);
-
-	// 	while (1)
-	// {
-
-		// bk_gpio_set_output_high(GPIO_8);
-		// bk_gpio_set_output_high(GPIO_9);
-		// rtos_delay_milliseconds(1000);
-		// bk_gpio_set_output_low(GPIO_8);
-		// bk_gpio_set_output_low(GPIO_9);
-		// rtos_delay_milliseconds(1000);
-		// if (get_fifo(&d) == BK_OK)
-		// {
-
-		// 	// os_printf("dmic=%08X\n", d);
-		// }
-		// else
-		// {
-		// 	os_printf("empty\n");
-		// 	rtos_delay_milliseconds(10);
-		// }
-	// }
+		while (1)
+		{
+			if (get_fifo(&d) != BK_OK)
+			{
+				rtos_delay_milliseconds(1);
+			}
+		}
+	}
 #endif
 	return 0;
 }
