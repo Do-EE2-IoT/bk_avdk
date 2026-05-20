@@ -32,6 +32,13 @@
 #define DIGITAL_MIC_DEFAULT_FRAME_COUNT 4U
 #define DIGITAL_MIC_FIFO_THRESHOLD 8U
 #define DIGITAL_MIC_MAX_WORDS_PER_POLL 128U
+#define DIGITAL_MIC_PCM_BLOCK_WORDS 320U
+#define DIGITAL_MIC_I2S_CHANNELS 2U
+#define DIGITAL_MIC_I2S_BITS_PER_SAMPLE 16U
+#define DIGITAL_MIC_FILTER_ENABLE 1U
+#define DIGITAL_MIC_HPF_ALPHA_Q15 31130
+#define DIGITAL_MIC_LPF_ALPHA_Q15 24576
+#define DIGITAL_MIC_NOISE_GATE_THRESHOLD 24
 
 typedef struct
 {
@@ -46,7 +53,81 @@ typedef struct
     bool dmic_started;
 } digital_mic_ctx_t;
 
+typedef struct
+{
+    int32_t prev_input;
+    int32_t hpf_output;
+    int32_t lpf_output;
+} digital_mic_filter_state_t;
+
 static digital_mic_ctx_t s_dmic;
+static digital_mic_filter_state_t s_filter_state[2];
+static uint32_t s_pcm_block[DIGITAL_MIC_PCM_BLOCK_WORDS];
+
+static int16_t digital_mic_clip_sample(int32_t sample)
+{
+    if (sample > 32767)
+    {
+        return 32767;
+    }
+    if (sample < -32768)
+    {
+        return -32768;
+    }
+
+    return (int16_t)sample;
+}
+
+static int32_t digital_mic_abs32(int32_t value)
+{
+    return (value < 0) ? -value : value;
+}
+
+static int16_t digital_mic_filter_sample(digital_mic_filter_state_t *state, int16_t sample)
+{
+#if DIGITAL_MIC_FILTER_ENABLE
+    int32_t input = sample;
+    int32_t hpf = input - state->prev_input +
+                  ((DIGITAL_MIC_HPF_ALPHA_Q15 * state->hpf_output) >> 15);
+    int32_t lpf = state->lpf_output +
+                  ((DIGITAL_MIC_LPF_ALPHA_Q15 * (hpf - state->lpf_output)) >> 15);
+    int32_t level = digital_mic_abs32(lpf);
+
+    state->prev_input = input;
+    state->hpf_output = hpf;
+    state->lpf_output = lpf;
+
+    if (level <= DIGITAL_MIC_NOISE_GATE_THRESHOLD)
+    {
+        return 0;
+    }
+
+    if (lpf > 0)
+    {
+        lpf -= DIGITAL_MIC_NOISE_GATE_THRESHOLD;
+    }
+    else
+    {
+        lpf += DIGITAL_MIC_NOISE_GATE_THRESHOLD;
+    }
+
+    return digital_mic_clip_sample(lpf);
+#else
+    (void)state;
+    return sample;
+#endif
+}
+
+static uint32_t digital_mic_filter_word(uint32_t word)
+{
+    int16_t low = (int16_t)(word & 0xFFFFU);
+    int16_t high = (int16_t)((word >> 16) & 0xFFFFU);
+
+    low = digital_mic_filter_sample(&s_filter_state[0], low);
+    high = digital_mic_filter_sample(&s_filter_state[1], high);
+
+    return (((uint32_t)(uint16_t)high) << 16) | (uint16_t)low;
+}
 
 static void digital_mic_log_status(const char *reason)
 {
@@ -98,7 +179,7 @@ static void digital_mic_cleanup(void)
 
     if (s_dmic.i2s_started)
     {
-        audio_play_i2s_direct_stop();
+        audio_play_pcm_i2s_stop();
         s_dmic.i2s_started = false;
     }
 }
@@ -111,6 +192,7 @@ static void digital_mic_task(void *arg)
     uint32_t status = 0;
     uint32_t dmic_data = 0;
     uint32_t poll_words = 0;
+    uint32_t block_words = 0;
     uint32_t last_logged_words = 0;
     uint32_t last_sample = 0;
 
@@ -120,10 +202,12 @@ static void digital_mic_task(void *arg)
          (unsigned long)s_dmic.config.sample_rate,
          (unsigned long)DIGITAL_MIC_FIFO_THRESHOLD);
 
-    ret = audio_play_i2s_direct_start(s_dmic.config.sample_rate);
+    ret = audio_play_pcm_i2s_start(s_dmic.config.sample_rate,
+                                   DIGITAL_MIC_I2S_CHANNELS,
+                                   DIGITAL_MIC_I2S_BITS_PER_SAMPLE);
     if (ret != BK_OK)
     {
-        LOGE("%s audio_play_i2s_direct_start failed: %d\r\n", __func__, ret);
+        LOGE("%s audio_play_pcm_i2s_start failed: %d\r\n", __func__, ret);
         goto exit;
     }
     s_dmic.i2s_started = true;
@@ -141,6 +225,8 @@ static void digital_mic_task(void *arg)
 
     dmic_config.samp_rate = s_dmic.config.sample_rate;
     dmic_config.dmic_chl = AUD_DMIC_CHL_LR;
+    s_filter_state[0] = (digital_mic_filter_state_t){0};
+    s_filter_state[1] = (digital_mic_filter_state_t){0};
 
     ret = bk_aud_dmic_init(&dmic_config);
     if (ret != BK_OK)
@@ -172,8 +258,11 @@ static void digital_mic_task(void *arg)
     }
     s_dmic.dac_started = true;
 
-    LOGW("DMIC FIFO->I2S running: GPIO_8 CLK, GPIO_9 DAT, sample_rate=%lu\r\n",
-         (unsigned long)s_dmic.config.sample_rate);
+    LOGW("DMIC FIFO->I2S ringbuffer running: GPIO_8 CLK, GPIO_9 DAT, sample_rate=%lu block_words=%u filter=%u gate=%d\r\n",
+         (unsigned long)s_dmic.config.sample_rate,
+         (unsigned int)DIGITAL_MIC_PCM_BLOCK_WORDS,
+         (unsigned int)DIGITAL_MIC_FILTER_ENABLE,
+         DIGITAL_MIC_NOISE_GATE_THRESHOLD);
     digital_mic_log_status("after start");
 
     while (s_dmic.running)
@@ -203,18 +292,25 @@ static void digital_mic_task(void *arg)
                 break;
             }
 
-            ret = audio_play_i2s_direct_write_word(dmic_data);
-            if (ret != BK_OK)
+            s_pcm_block[block_words++] = digital_mic_filter_word(dmic_data);
+            if (block_words >= DIGITAL_MIC_PCM_BLOCK_WORDS)
             {
-                LOGW("DMIC I2S direct write failed: %d word=0x%08lX\r\n",
-                     ret,
-                     (unsigned long)dmic_data);
-                break;
+                ret = audio_play_pcm_i2s_write((uint8_t *)s_pcm_block,
+                                               sizeof(s_pcm_block),
+                                               s_dmic.config.write_timeout_ms);
+                if (ret != BK_OK)
+                {
+                    LOGW("DMIC I2S block write failed: %d words=%lu\r\n",
+                         ret,
+                         (unsigned long)s_dmic.received_words);
+                    break;
+                }
+                block_words = 0;
             }
 
             s_dmic.received_words++;
             poll_words++;
-            last_sample = dmic_data;
+            last_sample = s_pcm_block[(block_words == 0U) ? (DIGITAL_MIC_PCM_BLOCK_WORDS - 1U) : (block_words - 1U)];
         }
 
         if (poll_words == 0U)
