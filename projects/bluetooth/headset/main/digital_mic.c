@@ -13,12 +13,6 @@
 
 #define TAG "DMIC_I2S"
 
-#define LOGI(...)          \
-    do                     \
-    {                      \
-        os_printf(TAG ": "); \
-        os_printf(__VA_ARGS__); \
-    } while (0)
 #define LOGW(...)          \
     do                     \
     {                      \
@@ -39,6 +33,7 @@
 #define DIGITAL_MIC_MIN_FRAME_COUNT 2U
 #define DIGITAL_MIC_MAX_FRAME_COUNT 8U
 #define DIGITAL_MIC_DMA_USER DMA_DEV_AUDIO
+#define DIGITAL_MIC_DMA_TRANSFER_BYTES 4U
 
 typedef struct
 {
@@ -51,6 +46,7 @@ typedef struct
     uint32_t frame_bytes;
     uint32_t frame_count;
     volatile uint32_t dma_frame_index;
+    volatile uint32_t dma_frame_bytes;
     volatile uint32_t read_frame_index;
     volatile uint32_t ready_frames;
     volatile uint32_t received_bytes;
@@ -90,7 +86,15 @@ static void digital_mic_dma_finish_isr(dma_id_t dma_id)
 {
     (void)dma_id;
 
-    s_dmic.received_bytes += s_dmic.frame_bytes;
+    s_dmic.received_bytes += DIGITAL_MIC_DMA_TRANSFER_BYTES;
+    s_dmic.dma_frame_bytes += DIGITAL_MIC_DMA_TRANSFER_BYTES;
+
+    if (s_dmic.dma_frame_bytes < s_dmic.frame_bytes)
+    {
+        return;
+    }
+
+    s_dmic.dma_frame_bytes = 0;
     s_dmic.dma_frame_index++;
     if (s_dmic.dma_frame_index >= s_dmic.frame_count)
     {
@@ -150,7 +154,7 @@ static bk_err_t digital_mic_dma_init(void)
     dma_config.mode = DMA_WORK_MODE_REPEAT;
     dma_config.chan_prio = 1;
     dma_config.src.dev = DMA_DEV_AUDIO;
-    dma_config.src.width = DMA_DATA_WIDTH_16BITS;
+    dma_config.src.width = DMA_DATA_WIDTH_32BITS;
     dma_config.src.addr_inc_en = DMA_ADDR_INC_ENABLE;
     dma_config.src.addr_loop_en = DMA_ADDR_LOOP_ENABLE;
     dma_config.src.start_addr = dmic_fifo_addr;
@@ -169,7 +173,7 @@ static bk_err_t digital_mic_dma_init(void)
         goto fail;
     }
 
-    ret = bk_dma_set_transfer_len(s_dmic.dma_id, s_dmic.frame_bytes);
+    ret = bk_dma_set_transfer_len(s_dmic.dma_id, DIGITAL_MIC_DMA_TRANSFER_BYTES);
     if (ret != BK_OK)
     {
         LOGE("%s bk_dma_set_transfer_len failed: %d\r\n", __func__, ret);
@@ -195,11 +199,12 @@ static bk_err_t digital_mic_dma_init(void)
         goto fail;
     }
 
-    LOGI("DMIC DMA ready, fifo=0x%08lX buffer=0x%08lX frame=%lu frames=%lu\r\n",
+    LOGW("DMIC DMA ready, fifo=0x%08lX buffer=0x%08lX frame=%lu frames=%lu transfer=%lu\r\n",
          (unsigned long)dmic_fifo_addr,
          (unsigned long)s_dmic.dma_buffer,
          (unsigned long)s_dmic.frame_bytes,
-         (unsigned long)s_dmic.frame_count);
+         (unsigned long)s_dmic.frame_count,
+         (unsigned long)DIGITAL_MIC_DMA_TRANSFER_BYTES);
 
     return BK_OK;
 
@@ -260,6 +265,34 @@ static void digital_mic_cleanup(void)
     }
 }
 
+static void digital_mic_log_status(const char *reason)
+{
+    bk_err_t ret;
+    uint32_t status = 0;
+
+    ret = bk_aud_dmic_get_status(&status);
+    if (ret == BK_OK)
+    {
+        LOGW("DMIC status %s: fifo_status=0x%08lX received=%lu ready=%lu dropped=%lu dma_frame=%lu frame_bytes=%lu\r\n",
+             reason,
+             (unsigned long)status,
+             (unsigned long)s_dmic.received_bytes,
+             (unsigned long)s_dmic.ready_frames,
+             (unsigned long)s_dmic.dropped_frames,
+             (unsigned long)s_dmic.dma_frame_index,
+             (unsigned long)s_dmic.dma_frame_bytes);
+    }
+    else
+    {
+        LOGW("DMIC status %s: read failed=%d received=%lu ready=%lu dropped=%lu\r\n",
+             reason,
+             ret,
+             (unsigned long)s_dmic.received_bytes,
+             (unsigned long)s_dmic.ready_frames,
+             (unsigned long)s_dmic.dropped_frames);
+    }
+}
+
 static void digital_mic_task(void *arg)
 {
     bk_err_t ret;
@@ -268,7 +301,7 @@ static void digital_mic_task(void *arg)
 
     (void)arg;
 
-    LOGI("DMIC->I2S task start, rate=%lu frame=%lums\r\n",
+    LOGW("DMIC->I2S task start, rate=%lu frame=%lums\r\n",
          (unsigned long)s_dmic.config.sample_rate,
          (unsigned long)s_dmic.config.frame_ms);
 
@@ -281,7 +314,7 @@ static void digital_mic_task(void *arg)
     s_dmic.i2s_started = true;
 
     dmic_config.samp_rate = s_dmic.config.sample_rate;
-    dmic_config.dmic_chl = AUD_DMIC_CHL_L;
+    dmic_config.dmic_chl = AUD_DMIC_CHL_LR;
     ret = bk_aud_dmic_init(&dmic_config);
     if (ret != BK_OK)
     {
@@ -310,8 +343,9 @@ static void digital_mic_task(void *arg)
     }
     s_dmic.dmic_started = true;
 
-    LOGI("DMIC->I2S running: DMIC GPIO_8 CLK, GPIO_9 DAT, sample_rate=%lu\r\n",
+    LOGW("DMIC->I2S running: DMIC GPIO_8 CLK, GPIO_9 DAT, sample_rate=%lu\r\n",
          (unsigned long)s_dmic.config.sample_rate);
+    digital_mic_log_status("after start");
 
     while (s_dmic.running)
     {
@@ -321,6 +355,7 @@ static void digital_mic_task(void *arg)
             LOGW("DMIC wait frame timeout, received=%lu dropped=%lu\r\n",
                  (unsigned long)s_dmic.received_bytes,
                  (unsigned long)s_dmic.dropped_frames);
+            digital_mic_log_status("timeout");
             continue;
         }
 
@@ -350,7 +385,7 @@ static void digital_mic_task(void *arg)
 
             if ((log_counter++ % 50U) == 0U)
             {
-                LOGI("DMIC bytes in=%lu, pushed I2S=%lu, frame=%lu ready=%lu dropped=%lu\r\n",
+                LOGW("DMIC bytes in=%lu, pushed I2S=%lu, frame=%lu ready=%lu dropped=%lu\r\n",
                      (unsigned long)s_dmic.received_bytes,
                      (unsigned long)stereo_len,
                      (unsigned long)frame_index,
@@ -363,7 +398,7 @@ static void digital_mic_task(void *arg)
 exit:
     digital_mic_cleanup();
     s_dmic.thread = NULL;
-    LOGI("DMIC->I2S task exit\r\n");
+    LOGW("DMIC->I2S task exit\r\n");
     rtos_delete_thread(NULL);
 }
 

@@ -20,9 +20,10 @@
 #define HEADSET_MODE_TEST_BLUETOOTH_I2S 1
 #define HEADSET_MODE_DMIC_AND_I2S 2
 #define HEADSET_MODE_TEST_HARDWARE_GPIO 3
+#define HEADSET_MODE_TEST_DMIC_CLI 4
 
 #ifndef HEADSET_APP_MODE
-#define HEADSET_APP_MODE 2
+#define HEADSET_APP_MODE HEADSET_MODE_DMIC_AND_I2S
 #endif
 
 #define AUTO_ENABLE_BLUETOOTH_DEMO 1
@@ -34,6 +35,8 @@
 #define TAS5805M_APP_I2C_DELAY_INIT 25U
 #define TAS5805M_APP_I2C_ADDRESS TAS5805M_I2C_ADDRESS_DEFAULT
 #define TAS5805M_APP_TAG "TAS5805M_APP"
+
+#define DUMP_I2C_ENABLE 0
 
 extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 
@@ -99,6 +102,7 @@ static void hardware_gpio_test_task(void *arg)
     hardware_gpio_test_configure_pin(TAS5805M_APP_SCL);
     hardware_gpio_test_configure_pin(TAS5805M_APP_PDN);
     hardware_gpio_test_configure_pin(TAS5805M_APP_ADR);
+    hardware_gpio_test_configure_pin(GPIO_8);
 
     BK_LOGI(TAS5805M_APP_TAG, "hardware GPIO test: toggle SDA=%d SCL=%d PDN=%d ADR=%d every 1s\r\n",
             TAS5805M_APP_SDA, TAS5805M_APP_SCL, TAS5805M_APP_PDN, TAS5805M_APP_ADR);
@@ -111,6 +115,7 @@ static void hardware_gpio_test_task(void *arg)
             bk_gpio_set_output_low(TAS5805M_APP_SCL);
             bk_gpio_set_output_low(TAS5805M_APP_PDN);
             bk_gpio_set_output_low(TAS5805M_APP_ADR);
+            bk_gpio_set_output_low(GPIO_8);
             os_printf("HW_GPIO_TEST: PDN GPIO_%d LOW\r\n", TAS5805M_APP_PDN);
         }
         else
@@ -119,6 +124,7 @@ static void hardware_gpio_test_task(void *arg)
             bk_gpio_set_output_high(TAS5805M_APP_SCL);
             bk_gpio_set_output_high(TAS5805M_APP_PDN);
             bk_gpio_set_output_high(TAS5805M_APP_ADR);
+            bk_gpio_set_output_high(GPIO_8);
             os_printf("HW_GPIO_TEST: PDN GPIO_%d HIGH\r\n", TAS5805M_APP_PDN);
         }
 
@@ -166,6 +172,26 @@ static bk_err_t tas5805m_start_init_task(void)
                               NULL);
 }
 
+static void dmic_cli_test_init(void)
+{
+#if CONFIG_CLI && CONFIG_AUDIO_TEST
+#if (!defined(CLI_CFG_AUD) || (CLI_CFG_AUD != 1))
+    int ret = cli_aud_init();
+    os_printf("HEADSET_MODE_TEST_DMIC_CLI: cli_aud_init ret=%d\r\n", ret);
+#else
+    os_printf("HEADSET_MODE_TEST_DMIC_CLI: cli_aud already registered by bk_cli_init\r\n");
+#endif
+    os_printf("Use: aud_dmic_raw_test start 44100\r\n");
+    os_printf("Use: aud_dmic_raw_test status\r\n");
+    os_printf("Use: aud_dmic_raw_test read 16\r\n");
+    os_printf("Use: aud_dmic_raw_test stop\r\n");
+    os_printf("Use: aud_dmic_dma_test start 44100\r\n");
+    os_printf("Use: aud_dmic_dma_test stop\r\n");
+#else
+    os_printf("HEADSET_MODE_TEST_DMIC_CLI requires CONFIG_CLI=1 and CONFIG_AUDIO_TEST=y\r\n");
+#endif
+}
+
 int main(void)
 {
 #if (CONFIG_SYS_CPU0)
@@ -190,6 +216,8 @@ int main(void)
     }
 #elif (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
     tas5805m_demo_init();
+#elif (HEADSET_APP_MODE == HEADSET_MODE_TEST_DMIC_CLI)
+    dmic_cli_test_init();
 #else
     ret = tas5805m_start_init_task();
     if (ret != BK_OK)
@@ -200,13 +228,18 @@ int main(void)
 
 #if (HEADSET_APP_MODE == HEADSET_MODE_TEST_HARDWARE_GPIO)
     os_printf("HEADSET_MODE_TEST_HARDWARE_GPIO started\r\n");
+#elif (HEADSET_APP_MODE == HEADSET_MODE_TEST_DMIC_CLI)
+    os_printf("HEADSET_MODE_TEST_DMIC_CLI started, TAS/I2S/app DMIC are not auto-started\r\n");
 #elif (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
+#if DUMP_I2C_ENABLE
     rtos_create_thread(NULL,
                        5,
                        "Report_error",
                        (beken_thread_function_t)report_error_task,
                        1024 * 3,
                        NULL);
+
+#endif
 
     if (!ate_is_enabled())
     {
@@ -229,6 +262,7 @@ int main(void)
         }
     }
 #elif (HEADSET_APP_MODE == HEADSET_MODE_TEST_BLUETOOTH_I2S)
+#if DUMP_I2C_ENABLE
     rtos_create_thread(NULL,
                        5,
                        "Report_error",
@@ -236,6 +270,7 @@ int main(void)
                        1024 * 3,
                        NULL);
 
+#endif
     if (!ate_is_enabled())
     {
         bt_manager_init();
