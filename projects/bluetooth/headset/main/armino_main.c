@@ -14,13 +14,15 @@
 #include "hogpd/hogpd_demo.h"
 #include "wifi_boarding/wifi_boarding_demo.h"
 #include "digital_mic.h"
+#include "gpio_driver.h"
 #include "tas_5805.h"
 
 #define HEADSET_MODE_TEST_BLUETOOTH_I2S 1
 #define HEADSET_MODE_DMIC_AND_I2S 2
+#define HEADSET_MODE_TEST_HARDWARE_GPIO 3
 
 #ifndef HEADSET_APP_MODE
-#define HEADSET_APP_MODE HEADSET_MODE_DMIC_AND_I2S
+#define HEADSET_APP_MODE 2
 #endif
 
 #define AUTO_ENABLE_BLUETOOTH_DEMO 1
@@ -71,14 +73,7 @@ static void tas5805m_demo_init(void)
         return;
     }
 
-    ret = tas5805m_dump_status();
-    if (ret != BK_OK)
-    {
-        BK_LOGE(TAS5805M_APP_TAG, "tas5805m_dump_status failed: %d\n", ret);
-        return;
-    }
-
-    BK_LOGI(TAS5805M_APP_TAG, "TAS5805M ready; playback config will run after I2S clock starts\r\n");
+    BK_LOGW(TAS5805M_APP_TAG, "TAS5805M power ready; I2C config will run after I2S clock starts\r\n");
 }
 
 static void tas5805m_init_task(void *arg)
@@ -88,17 +83,74 @@ static void tas5805m_init_task(void *arg)
     rtos_delete_thread(NULL);
 }
 
+static void hardware_gpio_test_configure_pin(gpio_id_t gpio)
+{
+    gpio_dev_unmap(gpio);
+    bk_gpio_disable_input(gpio);
+    bk_gpio_enable_output(gpio);
+    bk_gpio_set_output_low(gpio);
+}
+
+static void hardware_gpio_test_task(void *arg)
+{
+    bool high = false;
+
+    hardware_gpio_test_configure_pin(TAS5805M_APP_SDA);
+    hardware_gpio_test_configure_pin(TAS5805M_APP_SCL);
+    hardware_gpio_test_configure_pin(TAS5805M_APP_PDN);
+    hardware_gpio_test_configure_pin(TAS5805M_APP_ADR);
+
+    BK_LOGI(TAS5805M_APP_TAG, "hardware GPIO test: toggle SDA=%d SCL=%d PDN=%d ADR=%d every 1s\r\n",
+            TAS5805M_APP_SDA, TAS5805M_APP_SCL, TAS5805M_APP_PDN, TAS5805M_APP_ADR);
+
+    while (1)
+    {
+        if (high)
+        {
+            bk_gpio_set_output_low(TAS5805M_APP_SDA);
+            bk_gpio_set_output_low(TAS5805M_APP_SCL);
+            bk_gpio_set_output_low(TAS5805M_APP_PDN);
+            bk_gpio_set_output_low(TAS5805M_APP_ADR);
+            os_printf("HW_GPIO_TEST: PDN GPIO_%d LOW\r\n", TAS5805M_APP_PDN);
+        }
+        else
+        {
+            bk_gpio_set_output_high(TAS5805M_APP_SDA);
+            bk_gpio_set_output_high(TAS5805M_APP_SCL);
+            bk_gpio_set_output_high(TAS5805M_APP_PDN);
+            bk_gpio_set_output_high(TAS5805M_APP_ADR);
+            os_printf("HW_GPIO_TEST: PDN GPIO_%d HIGH\r\n", TAS5805M_APP_PDN);
+        }
+
+        high = !high;
+        rtos_delay_milliseconds(1000);
+    }
+}
+
+static bk_err_t hardware_gpio_test_start(void)
+{
+    return rtos_create_thread(NULL,
+                              5,
+                              "hw_gpio_test",
+                              (beken_thread_function_t)hardware_gpio_test_task,
+                              1024,
+                              NULL);
+}
+
 static void report_error_task(void *arg)
 {
     bk_err_t ret;
     rtos_delay_milliseconds(5000);
     while (1)
     {
-        ret = tas5805m_dump_status();
-        if (ret != BK_OK)
+        if (tas5805m_is_started())
         {
-            BK_LOGE(TAS5805M_APP_TAG, "tas5805m_dump_status failed: %d\n", ret);
-            // return;
+            ret = tas5805m_dump_status();
+            if (ret != BK_OK)
+            {
+                BK_LOGE(TAS5805M_APP_TAG, "tas5805m_dump_status failed: %d\n", ret);
+                // return;
+            }
         }
         rtos_delay_milliseconds(3000);
     }
@@ -130,7 +182,13 @@ int main(void)
 
     bk_err_t ret;
 
-#if (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
+#if (HEADSET_APP_MODE == HEADSET_MODE_TEST_HARDWARE_GPIO)
+    ret = hardware_gpio_test_start();
+    if (ret != BK_OK)
+    {
+        BK_LOGE(TAS5805M_APP_TAG, "Failed to create hardware GPIO test task: %d\n", ret);
+    }
+#elif (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
     tas5805m_demo_init();
 #else
     ret = tas5805m_start_init_task();
@@ -140,6 +198,9 @@ int main(void)
     }
 #endif
 
+#if (HEADSET_APP_MODE == HEADSET_MODE_TEST_HARDWARE_GPIO)
+    os_printf("HEADSET_MODE_TEST_HARDWARE_GPIO started\r\n");
+#elif (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
     rtos_create_thread(NULL,
                        5,
                        "Report_error",
@@ -147,7 +208,6 @@ int main(void)
                        1024 * 3,
                        NULL);
 
-#if (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
     if (!ate_is_enabled())
     {
         digital_mic_config_t dmic_config;
@@ -169,6 +229,13 @@ int main(void)
         }
     }
 #elif (HEADSET_APP_MODE == HEADSET_MODE_TEST_BLUETOOTH_I2S)
+    rtos_create_thread(NULL,
+                       5,
+                       "Report_error",
+                       (beken_thread_function_t)report_error_task,
+                       1024 * 3,
+                       NULL);
+
     if (!ate_is_enabled())
     {
         bt_manager_init();

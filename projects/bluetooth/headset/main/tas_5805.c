@@ -1,11 +1,15 @@
 #include "tas_5805.h"
 
+#include <driver/i2c.h>
 #include <os/mem.h>
 #include <os/os.h>
 
 #include "gpio_driver.h"
 
 #define TAS5805M_TAG "TAS5805M"
+#define TAS5805M_I2C_ID I2C_ID_1
+#define TAS5805M_I2C_BAUD_RATE I2C_BAUD_RATE_400KHZ
+#define TAS5805M_I2C_TIMEOUT_MS 100U
 #define TAS5805M_DEFAULT_DELAY_COUNT 25U
 #define TAS5805M_DEFAULT_PDN_LOW_DELAY_MS 120U
 #define TAS5805M_DEFAULT_PDN_HIGH_DELAY_MS 15U
@@ -21,6 +25,7 @@ typedef struct
     bool initialized;
     bool started;
     bool muted;
+    bool i2c_initialized;
     uint32_t sample_rate;
 } tas5805m_context_t;
 
@@ -255,14 +260,56 @@ static void tas5805m_i2c_bus_idle(void)
     tas5805m_sda_release();
 }
 
+static bk_err_t tas5805m_i2c_hw_init(void)
+{
+    bk_err_t ret;
+    i2c_config_t i2c_cfg = {0};
+
+    if ((s_tas5805m.config.sda_gpio != GPIO_1) ||
+        (s_tas5805m.config.scl_gpio != GPIO_0))
+    {
+        BK_LOGE(TAS5805M_TAG, "hardware I2C expects SDA GPIO_1 and SCL GPIO_0\r\n");
+        return BK_ERR_PARAM;
+    }
+
+    gpio_dev_unmap(GPIO_1);
+    gpio_dev_unmap(GPIO_0);
+    gpio_dev_map(GPIO_1, GPIO_DEV_I2C1_SDA);
+    gpio_dev_map(GPIO_0, GPIO_DEV_I2C1_SCL);
+    bk_gpio_pull_up(GPIO_1);
+    bk_gpio_pull_up(GPIO_0);
+
+    ret = bk_i2c_driver_init();
+    if (ret != BK_OK)
+    {
+        BK_LOGE(TAS5805M_TAG, "bk_i2c_driver_init failed: %d\r\n", ret);
+        return ret;
+    }
+
+    i2c_cfg.baud_rate = TAS5805M_I2C_BAUD_RATE;
+    i2c_cfg.addr_mode = I2C_ADDR_MODE_7BIT;
+    i2c_cfg.slave_addr = 0;
+
+    ret = bk_i2c_init(TAS5805M_I2C_ID, &i2c_cfg);
+    if (ret != BK_OK)
+    {
+        BK_LOGE(TAS5805M_TAG, "bk_i2c_init id=%d baud=%u failed: %d\r\n",
+                TAS5805M_I2C_ID, TAS5805M_I2C_BAUD_RATE, ret);
+        return ret;
+    }
+
+    s_tas5805m.i2c_initialized = true;
+    BK_LOGI(TAS5805M_TAG, "hardware I2C ready: id=%d SDA=GPIO_1 SCL=GPIO_0 baud=%u\r\n",
+            TAS5805M_I2C_ID, TAS5805M_I2C_BAUD_RATE);
+    return BK_OK;
+}
+
 static bool tas5805m_i2c_probe_address(uint8_t address)
 {
     bk_err_t ret;
+    uint8_t reg = TAS5805M_REG_PAGE;
 
-    tas5805m_i2c_start();
-    ret = tas5805m_i2c_write_byte((uint8_t)((address << 1) | 0U));
-    tas5805m_i2c_stop();
-
+    ret = bk_i2c_master_write(TAS5805M_I2C_ID, address, &reg, sizeof(reg), TAS5805M_I2C_TIMEOUT_MS);
     return (ret == BK_OK);
 }
 
@@ -303,9 +350,16 @@ static bk_err_t tas5805m_scan_i2c_bus(void)
 
 static void tas5805m_init_failed_cleanup(void)
 {
+    if (s_tas5805m.i2c_initialized)
+    {
+        bk_i2c_deinit(TAS5805M_I2C_ID);
+        s_tas5805m.i2c_initialized = false;
+    }
+
     if (tas5805m_gpio_is_used(s_tas5805m.config.pdn_gpio))
     {
         bk_gpio_set_output_low(s_tas5805m.config.pdn_gpio);
+        os_printf("TAS5805M: PDN GPIO_%d LOW (init failed cleanup)\r\n", s_tas5805m.config.pdn_gpio);
     }
 
     s_tas5805m.initialized = false;
@@ -315,8 +369,8 @@ static void tas5805m_init_failed_cleanup(void)
 static bk_err_t tas5805m_write_bytes(uint8_t reg, const uint8_t *data, uint32_t size)
 {
     bk_err_t ret;
-    uint32_t index;
     uint32_t attempt;
+    i2c_mem_param_t mem_param;
 
     if ((data == NULL) || (size == 0U))
     {
@@ -331,34 +385,20 @@ static bk_err_t tas5805m_write_bytes(uint8_t reg, const uint8_t *data, uint32_t 
 
     for (attempt = 0; attempt < TAS5805M_I2C_RETRY_COUNT; ++attempt)
     {
-        tas5805m_i2c_start();
+        os_memset(&mem_param, 0, sizeof(mem_param));
+        mem_param.dev_addr = s_tas5805m.config.i2c_address;
+        mem_param.mem_addr = reg;
+        mem_param.mem_addr_size = I2C_MEM_ADDR_SIZE_8BIT;
+        mem_param.data = (uint8_t *)data;
+        mem_param.data_size = size;
+        mem_param.timeout_ms = TAS5805M_I2C_TIMEOUT_MS;
 
-        ret = tas5805m_i2c_write_byte((uint8_t)((s_tas5805m.config.i2c_address << 1) | 0U));
-        if (ret != BK_OK)
+        ret = bk_i2c_memory_write(TAS5805M_I2C_ID, &mem_param);
+        if (ret == BK_OK)
         {
-            goto stop_and_retry;
+            return BK_OK;
         }
 
-        ret = tas5805m_i2c_write_byte(reg);
-        if (ret != BK_OK)
-        {
-            goto stop_and_retry;
-        }
-
-        for (index = 0; index < size; ++index)
-        {
-            ret = tas5805m_i2c_write_byte(data[index]);
-            if (ret != BK_OK)
-            {
-                goto stop_and_retry;
-            }
-        }
-
-        tas5805m_i2c_stop();
-        return BK_OK;
-
-    stop_and_retry:
-        tas5805m_i2c_stop();
         rtos_delay_milliseconds(1);
     }
 
@@ -369,8 +409,8 @@ static bk_err_t tas5805m_write_bytes(uint8_t reg, const uint8_t *data, uint32_t 
 static bk_err_t tas5805m_read_bytes(uint8_t reg, uint8_t *data, uint32_t size)
 {
     bk_err_t ret;
-    uint32_t index;
     uint32_t attempt;
+    i2c_mem_param_t mem_param;
 
     if ((data == NULL) || (size == 0U))
     {
@@ -385,37 +425,20 @@ static bk_err_t tas5805m_read_bytes(uint8_t reg, uint8_t *data, uint32_t size)
 
     for (attempt = 0; attempt < TAS5805M_I2C_RETRY_COUNT; ++attempt)
     {
-        tas5805m_i2c_start();
+        os_memset(&mem_param, 0, sizeof(mem_param));
+        mem_param.dev_addr = s_tas5805m.config.i2c_address;
+        mem_param.mem_addr = reg;
+        mem_param.mem_addr_size = I2C_MEM_ADDR_SIZE_8BIT;
+        mem_param.data = data;
+        mem_param.data_size = size;
+        mem_param.timeout_ms = TAS5805M_I2C_TIMEOUT_MS;
 
-        ret = tas5805m_i2c_write_byte((uint8_t)((s_tas5805m.config.i2c_address << 1) | 0U));
-        if (ret != BK_OK)
+        ret = bk_i2c_memory_read(TAS5805M_I2C_ID, &mem_param);
+        if (ret == BK_OK)
         {
-            goto stop_and_retry;
+            return BK_OK;
         }
 
-        ret = tas5805m_i2c_write_byte(reg);
-        if (ret != BK_OK)
-        {
-            goto stop_and_retry;
-        }
-
-        tas5805m_i2c_start();
-        ret = tas5805m_i2c_write_byte((uint8_t)((s_tas5805m.config.i2c_address << 1) | 1U));
-        if (ret != BK_OK)
-        {
-            goto stop_and_retry;
-        }
-
-        for (index = 0; index < size; ++index)
-        {
-            data[index] = tas5805m_i2c_read_byte(index + 1U < size);
-        }
-
-        tas5805m_i2c_stop();
-        return BK_OK;
-
-    stop_and_retry:
-        tas5805m_i2c_stop();
         rtos_delay_milliseconds(1);
     }
 
@@ -489,6 +512,7 @@ bk_err_t tas5805m_init(const tas5805m_config_t *config)
     s_tas5805m.initialized = true;
     s_tas5805m.started = false;
     s_tas5805m.muted = config->start_muted;
+    s_tas5805m.i2c_initialized = false;
     s_tas5805m.sample_rate = 0;
 
     if (tas5805m_gpio_is_used(s_tas5805m.config.adr_gpio))
@@ -520,46 +544,29 @@ bk_err_t tas5805m_init(const tas5805m_config_t *config)
 
         tas5805m_configure_output_gpio(s_tas5805m.config.pdn_gpio);
         bk_gpio_set_output_low(s_tas5805m.config.pdn_gpio);
+        os_printf("TAS5805M: PDN GPIO_%d LOW (power cycle start, delay %lu ms)\r\n",
+                  s_tas5805m.config.pdn_gpio,
+                  (unsigned long)low_delay_ms);
         rtos_delay_milliseconds(low_delay_ms);
         bk_gpio_set_output_high(s_tas5805m.config.pdn_gpio);
+        os_printf("TAS5805M: PDN GPIO_%d HIGH (power up, delay %lu ms)\r\n",
+                  s_tas5805m.config.pdn_gpio,
+                  (unsigned long)high_delay_ms);
         rtos_delay_milliseconds(high_delay_ms);
     }
 
-    tas5805m_configure_i2c_gpio();
-    tas5805m_i2c_bus_idle();
-
-    if (s_tas5805m.config.scan_bus)
-    {
-        ret = tas5805m_scan_i2c_bus();
-        if (ret != BK_OK)
-        {
-            goto init_failed;
-        }
-    }
-
-    ret = tas5805m_write_register(TAS5805M_REG_PAGE, 0x00);
+    ret = tas5805m_i2c_hw_init();
     if (ret != BK_OK)
     {
         goto init_failed;
     }
 
-    ret = tas5805m_write_register(TAS5805M_REG_BOOK, 0x00);
-    if (ret != BK_OK)
-    {
-        goto init_failed;
-    }
-
-    ret = tas5805m_write_register(TAS5805M_REG_DEVICE_CTRL_2, TAS5805M_DEVICE_CTRL_2_HIZ | TAS5805M_DEVICE_CTRL_2_MUTE);
-    if (ret != BK_OK)
-    {
-        goto init_failed;
-    }
-
-    BK_LOGI(TAS5805M_TAG, "TAS5805M powered, addr=0x%02X\r\n", s_tas5805m.config.i2c_address);
+    BK_LOGI(TAS5805M_TAG, "TAS5805M power pins ready, addr=0x%02X\r\n", s_tas5805m.config.i2c_address);
     return BK_OK;
 
 init_failed:
     tas5805m_init_failed_cleanup();
+    os_printf("tas init failed");
     return ret;
 }
 
@@ -575,6 +582,12 @@ bk_err_t tas5805m_deinit(void)
     if (tas5805m_gpio_is_used(s_tas5805m.config.pdn_gpio))
     {
         bk_gpio_set_output_low(s_tas5805m.config.pdn_gpio);
+        os_printf("TAS5805M: PDN GPIO_%d LOW (deinit)\r\n", s_tas5805m.config.pdn_gpio);
+    }
+
+    if (s_tas5805m.i2c_initialized)
+    {
+        bk_i2c_deinit(TAS5805M_I2C_ID);
     }
 
     os_memset(&s_tas5805m, 0, sizeof(s_tas5805m));
@@ -593,6 +606,33 @@ bk_err_t tas5805m_start(uint32_t sample_rate)
     }
 
     rtos_delay_milliseconds(TAS5805M_CLOCK_STABLE_DELAY_MS);
+
+    if (s_tas5805m.config.scan_bus)
+    {
+        ret = tas5805m_scan_i2c_bus();
+        if (ret != BK_OK)
+        {
+            return ret;
+        }
+    }
+
+    ret = tas5805m_write_register(TAS5805M_REG_PAGE, 0x00);
+    if (ret != BK_OK)
+    {
+        return ret;
+    }
+
+    ret = tas5805m_write_register(TAS5805M_REG_BOOK, 0x00);
+    if (ret != BK_OK)
+    {
+        return ret;
+    }
+
+    ret = tas5805m_write_register(TAS5805M_REG_DEVICE_CTRL_2, TAS5805M_DEVICE_CTRL_2_HIZ | TAS5805M_DEVICE_CTRL_2_MUTE);
+    if (ret != BK_OK)
+    {
+        return ret;
+    }
 
     ret = tas5805m_send_cfg(s_tas5805m_minimal_cfg, sizeof(s_tas5805m_minimal_cfg));
     if (ret != BK_OK)
