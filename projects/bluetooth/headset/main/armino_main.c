@@ -215,7 +215,7 @@ int main(void)
         BK_LOGE(TAS5805M_APP_TAG, "Failed to create hardware GPIO test task: %d\n", ret);
     }
 #elif (HEADSET_APP_MODE == HEADSET_MODE_DMIC_AND_I2S)
-    tas5805m_demo_init();
+    os_printf("HEADSET_MODE_DMIC_AND_I2S: DMIC raw example test, TAS/I2S disabled\r\n");
 #elif (HEADSET_APP_MODE == HEADSET_MODE_TEST_DMIC_CLI)
     dmic_cli_test_init();
 #else
@@ -258,7 +258,7 @@ int main(void)
         }
         else
         {
-            os_printf("DMIC_I2S: app mode DMIC_AND_I2S started, bluetooth demo disabled\r\n");
+            os_printf("DMIC_I2S: DMIC raw example started, bluetooth/TAS/I2S disabled\r\n");
         }
     }
 #elif (HEADSET_APP_MODE == HEADSET_MODE_TEST_BLUETOOTH_I2S)

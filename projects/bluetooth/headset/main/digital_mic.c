@@ -297,21 +297,16 @@ static void digital_mic_task(void *arg)
 {
     bk_err_t ret;
     aud_dmic_config_t dmic_config = DEFAULT_AUD_DMIC_CONFIG();
-    uint32_t log_counter = 0;
+    uint32_t status = 0;
+    uint32_t dmic_data = 0;
+    uint32_t data_count = 0;
+    uint32_t empty_count = 0;
 
     (void)arg;
 
-    LOGW("DMIC->I2S task start, rate=%lu frame=%lums\r\n",
+    LOGW("DMIC raw example task start, rate=%lu frame=%lums\r\n",
          (unsigned long)s_dmic.config.sample_rate,
          (unsigned long)s_dmic.config.frame_ms);
-
-    ret = audio_play_pcm_i2s_start(s_dmic.config.sample_rate, 2, 16);
-    if (ret != BK_OK)
-    {
-        LOGE("%s audio_play_pcm_i2s_start failed: %d\r\n", __func__, ret);
-        goto exit;
-    }
-    s_dmic.i2s_started = true;
 
     dmic_config.samp_rate = s_dmic.config.sample_rate;
     dmic_config.dmic_chl = AUD_DMIC_CHL_LR;
@@ -322,18 +317,13 @@ static void digital_mic_task(void *arg)
         goto exit;
     }
 
-    ret = digital_mic_dma_init();
+    ret = bk_aud_dmic_set_dmic_wr_threshold(8);
     if (ret != BK_OK)
     {
+        LOGE("%s bk_aud_dmic_set_dmic_wr_threshold failed: %d\r\n", __func__, ret);
         goto exit;
     }
-
-    ret = bk_dma_start(s_dmic.dma_id);
-    if (ret != BK_OK)
-    {
-        LOGE("%s bk_dma_start failed: %d\r\n", __func__, ret);
-        goto exit;
-    }
+    LOGW("DMIC raw example threshold set to 8\r\n");
 
     ret = bk_aud_dmic_start();
     if (ret != BK_OK)
@@ -343,55 +333,49 @@ static void digital_mic_task(void *arg)
     }
     s_dmic.dmic_started = true;
 
-    LOGW("DMIC->I2S running: DMIC GPIO_8 CLK, GPIO_9 DAT, sample_rate=%lu\r\n",
+    LOGW("DMIC raw example running: DMIC GPIO_8 CLK, GPIO_9 DAT, sample_rate=%lu\r\n",
          (unsigned long)s_dmic.config.sample_rate);
     digital_mic_log_status("after start");
 
     while (s_dmic.running)
     {
-        ret = rtos_get_semaphore(&s_dmic.frame_sema, 1000);
+        ret = bk_aud_dmic_get_status(&status);
         if (ret != BK_OK)
         {
-            LOGW("DMIC wait frame timeout, received=%lu dropped=%lu\r\n",
-                 (unsigned long)s_dmic.received_bytes,
-                 (unsigned long)s_dmic.dropped_frames);
-            digital_mic_log_status("timeout");
+            LOGW("DMIC raw example status read failed: %d\r\n", ret);
+            rtos_delay_milliseconds(1000);
             continue;
         }
 
-        while (s_dmic.ready_frames > 0U)
+        if (status & (AUD_DMIC_NEAR_FULL_MASK | AUD_DMIC_FIFO_FULL_MASK))
         {
-            uint32_t frame_index = s_dmic.read_frame_index;
-            uint8_t *mono = s_dmic.dma_buffer + frame_index * s_dmic.frame_bytes;
-            uint32_t stereo_len = digital_mic_mono_to_stereo(s_dmic.stereo_buffer, mono, s_dmic.frame_bytes);
-
-            s_dmic.read_frame_index++;
-            if (s_dmic.read_frame_index >= s_dmic.frame_count)
-            {
-                s_dmic.read_frame_index = 0;
-            }
-            s_dmic.ready_frames--;
-
-            ret = audio_play_pcm_i2s_write(s_dmic.stereo_buffer, stereo_len, s_dmic.config.write_timeout_ms);
+            ret = bk_aud_dmic_get_fifo_data(&dmic_data);
             if (ret != BK_OK)
             {
-                LOGE("DMIC push I2S failed: %d, frame=%lu mono=%lu stereo=%lu\r\n",
-                     ret,
-                     (unsigned long)frame_index,
-                     (unsigned long)s_dmic.frame_bytes,
-                     (unsigned long)stereo_len);
-                break;
+                LOGW("DMIC raw example fifo read failed: %d status=0x%08lX\r\n",
+                     ret, (unsigned long)status);
+                rtos_delay_milliseconds(10);
+                continue;
             }
 
-            if ((log_counter++ % 50U) == 0U)
+            data_count++;
+            s_dmic.received_bytes += sizeof(dmic_data);
+            LOGW("DMIC FIFO data[%lu]: 0x%08lX status=0x%08lX\r\n",
+                 (unsigned long)data_count,
+                 (unsigned long)dmic_data,
+                 (unsigned long)status);
+        }
+        else
+        {
+            empty_count++;
+            if ((empty_count % 100U) == 0U)
             {
-                LOGW("DMIC bytes in=%lu, pushed I2S=%lu, frame=%lu ready=%lu dropped=%lu\r\n",
-                     (unsigned long)s_dmic.received_bytes,
-                     (unsigned long)stereo_len,
-                     (unsigned long)frame_index,
-                     (unsigned long)s_dmic.ready_frames,
-                     (unsigned long)s_dmic.dropped_frames);
+                LOGW("DMIC raw example empty count=%lu status=0x%08lX data_count=%lu\r\n",
+                     (unsigned long)empty_count,
+                     (unsigned long)status,
+                     (unsigned long)data_count);
             }
+            rtos_delay_milliseconds(10);
         }
     }
 
