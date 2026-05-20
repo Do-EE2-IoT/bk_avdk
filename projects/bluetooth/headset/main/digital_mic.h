@@ -10,7 +10,7 @@ extern "C"
 {
 #endif
 
-#define DIGITAL_MIC_SAMPLE_RATE_DEFAULT 44100U
+#define DIGITAL_MIC_SAMPLE_RATE_DEFAULT 16000U
 
 typedef struct
 {
