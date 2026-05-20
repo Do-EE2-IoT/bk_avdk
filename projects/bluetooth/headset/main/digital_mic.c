@@ -31,9 +31,7 @@
 #define DIGITAL_MIC_DEFAULT_FRAME_MS 20U
 #define DIGITAL_MIC_DEFAULT_FRAME_COUNT 4U
 #define DIGITAL_MIC_FIFO_THRESHOLD 8U
-#define DIGITAL_MIC_I2S_CHANNELS 2U
-#define DIGITAL_MIC_I2S_BITS_PER_SAMPLE 16U
-#define DIGITAL_MIC_LOG_EVERY_WORDS 256U
+#define DIGITAL_MIC_MAX_WORDS_PER_POLL 128U
 
 typedef struct
 {
@@ -49,35 +47,6 @@ typedef struct
 } digital_mic_ctx_t;
 
 static digital_mic_ctx_t s_dmic;
-
-static bk_err_t digital_mic_get_fifo(uint32_t *data)
-{
-    uint32_t dmic_status = 0;
-    bk_err_t ret;
-
-    ret = bk_aud_dmic_get_status(&dmic_status);
-    if (ret != BK_OK)
-    {
-        LOGW("DMIC get status failed: %d\r\n", ret);
-        return ret;
-    }
-
-    if (dmic_status & (AUD_DMIC_NEAR_FULL_MASK | AUD_DMIC_FIFO_FULL_MASK))
-    {
-        ret = bk_aud_dmic_get_fifo_data(data);
-        if (ret != BK_OK)
-        {
-            LOGW("DMIC get fifo data failed: %d status=0x%08lX\r\n",
-                 ret,
-                 (unsigned long)dmic_status);
-            return ret;
-        }
-
-        return BK_OK;
-    }
-
-    return BK_FAIL;
-}
 
 static void digital_mic_log_status(const char *reason)
 {
@@ -129,7 +98,7 @@ static void digital_mic_cleanup(void)
 
     if (s_dmic.i2s_started)
     {
-        audio_play_pcm_i2s_stop();
+        audio_play_i2s_direct_stop();
         s_dmic.i2s_started = false;
     }
 }
@@ -139,21 +108,22 @@ static void digital_mic_task(void *arg)
     bk_err_t ret;
     aud_dac_config_t dac_config = DEFAULT_AUD_DAC_CONFIG();
     aud_dmic_config_t dmic_config = DEFAULT_AUD_DMIC_CONFIG();
+    uint32_t status = 0;
     uint32_t dmic_data = 0;
-    int16_t pcm_frame[2];
+    uint32_t poll_words = 0;
+    uint32_t last_logged_words = 0;
+    uint32_t last_sample = 0;
 
     (void)arg;
 
-    LOGW("DMIC polling task start, rate=%lu threshold=%lu\r\n",
+    LOGW("DMIC direct FIFO task start, rate=%lu threshold=%lu\r\n",
          (unsigned long)s_dmic.config.sample_rate,
          (unsigned long)DIGITAL_MIC_FIFO_THRESHOLD);
 
-    ret = audio_play_pcm_i2s_start(s_dmic.config.sample_rate,
-                                   DIGITAL_MIC_I2S_CHANNELS,
-                                   DIGITAL_MIC_I2S_BITS_PER_SAMPLE);
+    ret = audio_play_i2s_direct_start(s_dmic.config.sample_rate);
     if (ret != BK_OK)
     {
-        LOGE("%s audio_play_pcm_i2s_start failed: %d\r\n", __func__, ret);
+        LOGE("%s audio_play_i2s_direct_start failed: %d\r\n", __func__, ret);
         goto exit;
     }
     s_dmic.i2s_started = true;
@@ -186,14 +156,6 @@ static void digital_mic_task(void *arg)
         goto exit;
     }
 
-    ret = bk_aud_dac_start();
-    if (ret != BK_OK)
-    {
-        LOGE("%s bk_aud_dac_start failed: %d\r\n", __func__, ret);
-        goto exit;
-    }
-    s_dmic.dac_started = true;
-
     ret = bk_aud_dmic_start();
     if (ret != BK_OK)
     {
@@ -202,41 +164,74 @@ static void digital_mic_task(void *arg)
     }
     s_dmic.dmic_started = true;
 
-    LOGW("DMIC->I2S running: GPIO_8 CLK, GPIO_9 DAT, sample_rate=%lu\r\n",
+    ret = bk_aud_dac_start();
+    if (ret != BK_OK)
+    {
+        LOGE("%s bk_aud_dac_start failed: %d\r\n", __func__, ret);
+        goto exit;
+    }
+    s_dmic.dac_started = true;
+
+    LOGW("DMIC FIFO->I2S running: GPIO_8 CLK, GPIO_9 DAT, sample_rate=%lu\r\n",
          (unsigned long)s_dmic.config.sample_rate);
     digital_mic_log_status("after start");
 
     while (s_dmic.running)
     {
-        ret = digital_mic_get_fifo(&dmic_data);
-        if (ret == BK_OK)
-        {
-            s_dmic.received_words++;
-            pcm_frame[0] = (int16_t)(dmic_data & 0xFFFFU);
-            pcm_frame[1] = (int16_t)((dmic_data >> 16) & 0xFFFFU);
+        poll_words = 0;
 
-            ret = audio_play_pcm_i2s_write((uint8_t *)pcm_frame,
-                                           sizeof(pcm_frame),
-                                           s_dmic.config.write_timeout_ms);
+        while (poll_words < DIGITAL_MIC_MAX_WORDS_PER_POLL)
+        {
+            ret = bk_aud_dmic_get_status(&status);
             if (ret != BK_OK)
             {
-                LOGW("DMIC I2S write failed: %d word=0x%08lX\r\n",
+                LOGW("DMIC get status failed: %d\r\n", ret);
+                break;
+            }
+
+            if (status & AUD_DMIC_FIFO_EMPTY_MASK)
+            {
+                break;
+            }
+
+            ret = bk_aud_dmic_get_fifo_data(&dmic_data);
+            if (ret != BK_OK)
+            {
+                LOGW("DMIC get fifo data failed: %d status=0x%08lX\r\n",
+                     ret,
+                     (unsigned long)status);
+                break;
+            }
+
+            ret = audio_play_i2s_direct_write_word(dmic_data);
+            if (ret != BK_OK)
+            {
+                LOGW("DMIC I2S direct write failed: %d word=0x%08lX\r\n",
                      ret,
                      (unsigned long)dmic_data);
+                break;
             }
-            else if ((s_dmic.received_words % DIGITAL_MIC_LOG_EVERY_WORDS) == 0U)
-            {
-                LOGW("DMIC FIFO data: 0x%08lX\r\n", (unsigned long)dmic_data);
-            }
-            continue;
+
+            s_dmic.received_words++;
+            poll_words++;
+            last_sample = dmic_data;
         }
 
-        s_dmic.empty_polls++;
-        if ((s_dmic.empty_polls % 1000U) == 0U)
+        if (poll_words == 0U)
         {
-            digital_mic_log_status("poll empty");
+            s_dmic.empty_polls++;
+            rtos_delay_milliseconds(1);
         }
-        rtos_delay_milliseconds(1);
+
+        if ((s_dmic.received_words - last_logged_words) >= s_dmic.config.sample_rate)
+        {
+            last_logged_words = s_dmic.received_words;
+            LOGW("DMIC FIFO->I2S words=%lu empty_polls=%lu last=0x%08lX status=0x%08lX\r\n",
+                 (unsigned long)s_dmic.received_words,
+                 (unsigned long)s_dmic.empty_polls,
+                 (unsigned long)last_sample,
+                 (unsigned long)status);
+        }
     }
 
 exit:

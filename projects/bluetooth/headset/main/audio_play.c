@@ -24,7 +24,7 @@
 
 #define TAG "AUD_PLAY_I2S"
 
-float gain = 0.25f;
+float gain = 1.0f;
 
 typedef struct
 {
@@ -37,6 +37,7 @@ typedef struct
 
 static audio_pcm_stream_t s_audio_pcm_stream = {0};
 static uint32_t s_audio_pcm_log_counter = 0;
+static bool s_audio_i2s_direct_started = false;
 
 static bk_err_t audio_play_i2s_hw_start(uint32_t sample_rate, RingBufferContext **tx_rb);
 static void audio_play_i2s_hw_stop(void);
@@ -229,6 +230,143 @@ bk_err_t audio_play_pcm_i2s_stop(void)
 	os_memset(&s_audio_pcm_stream, 0, sizeof(s_audio_pcm_stream));
 	BK_LOGI(TAG, "PCM I2S stream stopped\n");
 	return BK_OK;
+}
+
+bk_err_t audio_play_i2s_direct_start(uint32_t sample_rate)
+{
+	bk_err_t ret;
+	i2s_config_t i2s_config = DEFAULT_I2S_CONFIG();
+	i2s_samp_rate_t i2s_rate;
+
+	if (s_audio_pcm_stream.started)
+	{
+		return BK_ERR_BUSY;
+	}
+
+	if (s_audio_i2s_direct_started)
+	{
+		return BK_OK;
+	}
+
+	ret = bk_i2s_driver_init();
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "bk_i2s_driver_init fail, ret:%d\n", ret);
+		return ret;
+	}
+
+	i2s_config.role = I2S_ROLE_MASTER;
+	i2s_config.work_mode = I2S_WORK_MODE_I2S;
+	i2s_config.samp_rate = I2S_SAMP_RATE_44100;
+	i2s_config.data_length = 16;
+	i2s_config.store_mode = I2S_LRCOM_STORE_16R16L;
+
+	ret = bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "bk_i2s_init fail, ret:%d\n", ret);
+		bk_i2s_driver_deinit();
+		return ret;
+	}
+
+	i2s_rate = get_i2s_sample_rate(sample_rate);
+	ret = bk_i2s_set_samp_rate(i2s_rate);
+	if (ret != BK_OK)
+	{
+		BK_LOGW(TAG, "bk_i2s_set_samp_rate fail, ret:%d\n", ret);
+	}
+
+	ret = bk_i2s_clear_txfifo();
+	if (ret != BK_OK)
+	{
+		BK_LOGW(TAG, "bk_i2s_clear_txfifo fail, ret:%d\n", ret);
+	}
+
+	ret = bk_i2s_start();
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "bk_i2s_start fail, ret:%d\n", ret);
+		bk_i2s_deinit();
+		bk_i2s_driver_deinit();
+		return ret;
+	}
+
+	ret = tas5805m_start(sample_rate);
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "tas5805m_start fail, ret:%d\n", ret);
+		bk_i2s_stop();
+		bk_i2s_deinit();
+		bk_i2s_driver_deinit();
+		return ret;
+	}
+
+	s_audio_i2s_direct_started = true;
+	BK_LOGW(TAG, "direct I2S stream started, rate=%lu\n", (unsigned long)sample_rate);
+	return BK_OK;
+}
+
+bk_err_t audio_play_i2s_direct_stop(void)
+{
+	bk_err_t ret;
+
+	if (!s_audio_i2s_direct_started)
+	{
+		return BK_OK;
+	}
+
+	ret = tas5805m_stop();
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "tas5805m_stop fail, ret:%d\n", ret);
+	}
+
+	ret = bk_i2s_stop();
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "bk_i2s_stop fail, ret:%d\n", ret);
+	}
+
+	ret = bk_i2s_deinit();
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "bk_i2s_deinit fail, ret:%d\n", ret);
+	}
+
+	ret = bk_i2s_driver_deinit();
+	if (ret != BK_OK)
+	{
+		BK_LOGE(TAG, "bk_i2s_driver_deinit fail, ret:%d\n", ret);
+	}
+
+	s_audio_i2s_direct_started = false;
+	BK_LOGW(TAG, "direct I2S stream stopped\n");
+	return BK_OK;
+}
+
+bk_err_t audio_play_i2s_get_tx_addr(uint32_t *i2s_data_addr)
+{
+	if (i2s_data_addr == NULL)
+	{
+		return BK_ERR_NULL_PARAM;
+	}
+
+	if (!s_audio_i2s_direct_started)
+	{
+		return BK_ERR_NOT_INIT;
+	}
+
+	return bk_i2s_get_data_addr(I2S_CHANNEL_1, i2s_data_addr);
+}
+
+bk_err_t audio_play_i2s_direct_write_word(uint32_t data)
+{
+	if (!s_audio_i2s_direct_started)
+	{
+		return BK_ERR_NOT_INIT;
+	}
+
+	return bk_i2s_write_data(I2S_CHANNEL_1, &data, 1);
 }
 
 // I2S callback - called by DMA when buffer needs data

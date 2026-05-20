@@ -23,8 +23,16 @@ extern "C"
 
 	bk_err_t audio_play_pcm_i2s_write(uint8_t *data, uint32_t size, uint32_t timeout_ms);
 
-	bk_err_t audio_play_pcm_i2s_stop(void);
+		bk_err_t audio_play_pcm_i2s_stop(void);
 
-#ifdef __cplusplus
-}
+		bk_err_t audio_play_i2s_direct_start(uint32_t sample_rate);
+
+		bk_err_t audio_play_i2s_direct_stop(void);
+
+		bk_err_t audio_play_i2s_get_tx_addr(uint32_t *i2s_data_addr);
+
+		bk_err_t audio_play_i2s_direct_write_word(uint32_t data);
+
+	#ifdef __cplusplus
+	}
 #endif
