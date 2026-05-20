@@ -361,9 +361,26 @@ bk_err_t audio_play_i2s_get_tx_addr(uint32_t *i2s_data_addr)
 
 bk_err_t audio_play_i2s_direct_write_word(uint32_t data)
 {
+	uint32_t write_ready = 0;
+	uint32_t wait_count = 0;
+
 	if (!s_audio_i2s_direct_started)
 	{
 		return BK_ERR_NOT_INIT;
+	}
+
+	do
+	{
+		if (bk_i2s_get_write_ready(&write_ready) != BK_OK)
+		{
+			return BK_FAIL;
+		}
+		wait_count++;
+	} while ((write_ready == 0U) && (wait_count < 100000U));
+
+	if (write_ready == 0U)
+	{
+		return BK_FAIL;
 	}
 
 	return bk_i2s_write_data(I2S_CHANNEL_1, &data, 1);
