@@ -5,14 +5,14 @@
 #include "cli.h"
 #include "audio_play.h"
 #include "media_service.h"
-#include <driver/pwr_clk.h>
-#include "bk_gpio.h"
-#include "gpio_driver.h"
+
+#define AUTO_PLAY_MP3_FILE "i2s_test.mp3"
+#define AUTO_PLAY_START_DELAY_MS 1000
 
 extern void user_app_main(void);
 extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 
-#if (CONFIG_SYS_CPU0 && CONFIG_SOC_BK7236XX)
+#if CONFIG_SYS_CPU0
 static void cli_audio_play_sdcard_mp3_music_help(void)
 {
 	os_printf("audio_play_sdcard_mp3_music {start|stop file_name} \r\n");
@@ -20,7 +20,7 @@ static void cli_audio_play_sdcard_mp3_music_help(void)
 
 void cli_audio_play_sdcard_mp3_music_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
 {
-	if (argc != 2 && argc != 3)
+	if (argc < 2)
 	{
 		cli_audio_play_sdcard_mp3_music_help();
 		return;
@@ -28,6 +28,12 @@ void cli_audio_play_sdcard_mp3_music_cmd(char *pcWriteBuffer, int xWriteBufferLe
 
 	if (os_strcmp(argv[1], "start") == 0)
 	{
+		if (argc < 3)
+		{
+			cli_audio_play_sdcard_mp3_music_help();
+			return;
+		}
+
 		if (BK_OK != audio_play_sdcard_mp3_music_start(argv[2]))
 			os_printf("start audio play sdcard mp3 music fail \n");
 		else
@@ -60,7 +66,7 @@ void user_app_main(void)
 {
 	cli_audio_play_sdcard_mp3_music_init();
 }
-#endif // #if (CONFIG_SYS_CPU0 && CONFIG_SOC_BK7236XX)
+#endif
 
 int main(void)
 {
@@ -70,37 +76,16 @@ int main(void)
 	bk_init();
 	media_service_init();
 
-	gpio_dev_unmap(2);
-	bk_gpio_disable_input(2);
-	bk_gpio_enable_output(2);
-
-	gpio_dev_unmap(3);
-	bk_gpio_disable_input(3);
-	bk_gpio_enable_output(3);
-
-	gpio_dev_unmap(4);
-	bk_gpio_disable_input(4);
-	bk_gpio_enable_output(4);
-
-	gpio_dev_unmap(5);
-	bk_gpio_disable_input(5);
-	bk_gpio_enable_output(5);
-
-	while(1){
-		bk_gpio_set_output_high(2);
-		bk_gpio_set_output_high(3);
-		bk_gpio_set_output_high(4);
-		os_printf("Toggle \r\n");
-		rtos_delay_milliseconds(1000);
-		bk_gpio_set_output_low(2);
-		bk_gpio_set_output_low(3);
-		bk_gpio_set_output_low(4);
-		os_printf("Toggle \r\n");
-		rtos_delay_milliseconds(1000);
-	}
-
 #if (CONFIG_SYS_CPU0)
-//	bk_pm_module_vote_boot_cp1_ctrl(PM_BOOT_CP1_MODULE_NAME_AUDP_AUDIO, PM_POWER_MODULE_STATE_ON);
+	rtos_delay_milliseconds(AUTO_PLAY_START_DELAY_MS);
+	if (audio_play_sdcard_mp3_music_start(AUTO_PLAY_MP3_FILE) != BK_OK)
+	{
+		os_printf("auto play %s fail\n", AUTO_PLAY_MP3_FILE);
+	}
+	else
+	{
+		os_printf("auto play %s ok\n", AUTO_PLAY_MP3_FILE);
+	}
 #endif
 
 	return 0;

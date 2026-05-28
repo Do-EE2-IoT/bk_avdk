@@ -23,6 +23,8 @@
 #include "tas_5805.h"
 
 #define TAG "AUD_PLAY_I2S"
+#define AUDIO_PLAY_I2S_STORE_MODE I2S_LRCOM_STORE_16R16L
+#define AUDIO_PLAY_I2S_REF_LOG_INTERVAL 64U
 
 float gain = 1.0f;
 
@@ -37,12 +39,23 @@ typedef struct
 
 static audio_pcm_stream_t s_audio_pcm_stream = {0};
 static uint32_t s_audio_pcm_log_counter = 0;
+static uint32_t s_audio_i2s_ref_log_counter = 0;
 static bool s_audio_i2s_direct_started = false;
 
 static bk_err_t audio_play_i2s_hw_start(uint32_t sample_rate, RingBufferContext **tx_rb);
 static void audio_play_i2s_hw_stop(void);
 static void audio_play_apply_gain(int16_t *samples, uint32_t sample_count);
 static void audio_play_log_pcm_chunk(const uint8_t *data, uint32_t size, uint32_t total_written, uint32_t written);
+static void audio_play_log_i2s_ref(const uint8_t *data,
+								   uint32_t size,
+								   uint32_t written,
+								   uint32_t timeout_ms,
+								   uint32_t rb_free_before,
+								   uint32_t rb_fill_before,
+								   uint32_t rb_capacity,
+								   uint32_t rb_free_after,
+								   uint32_t rb_fill_after,
+								   bool force_log);
 
 // Convert MP3 sample rate to I2S enum
 static i2s_samp_rate_t get_i2s_sample_rate(uint32_t mp3_rate)
@@ -108,6 +121,7 @@ bk_err_t audio_play_pcm_i2s_start(uint32_t sample_rate, uint8_t channels, uint8_
 	s_audio_pcm_stream.sample_rate = sample_rate;
 	s_audio_pcm_stream.channels = channels;
 	s_audio_pcm_stream.bits_per_sample = bits_per_sample;
+	s_audio_i2s_ref_log_counter = 0;
 
 	BK_LOGW(TAG, "PCM I2S stream started, rate=%lu channels=%u bits=%u\n",
 			(unsigned long)sample_rate, channels, bits_per_sample);
@@ -119,6 +133,9 @@ bk_err_t audio_play_pcm_i2s_write(uint8_t *data, uint32_t size, uint32_t timeout
 {
 	uint32_t total_written = 0;
 	uint32_t waited_ms = 0;
+	uint32_t rb_free_before;
+	uint32_t rb_fill_before;
+	uint32_t rb_capacity;
 
 	if ((data == NULL) || (size == 0U))
 	{
@@ -129,6 +146,10 @@ bk_err_t audio_play_pcm_i2s_write(uint8_t *data, uint32_t size, uint32_t timeout
 	{
 		return BK_ERR_NOT_INIT;
 	}
+
+	rb_free_before = ring_buffer_get_free_size(s_audio_pcm_stream.i2s_tx_rb);
+	rb_fill_before = ring_buffer_get_fill_size(s_audio_pcm_stream.i2s_tx_rb);
+	rb_capacity = s_audio_pcm_stream.i2s_tx_rb->capacity;
 
 	if ((s_audio_pcm_stream.bits_per_sample == 16U) && ((size % 2U) == 0U))
 	{
@@ -152,6 +173,16 @@ bk_err_t audio_play_pcm_i2s_write(uint8_t *data, uint32_t size, uint32_t timeout
 
 		if (total_written >= size)
 		{
+			audio_play_log_i2s_ref(data,
+								   size,
+								   total_written,
+								   timeout_ms,
+								   rb_free_before,
+								   rb_fill_before,
+								   rb_capacity,
+								   ring_buffer_get_free_size(s_audio_pcm_stream.i2s_tx_rb),
+								   ring_buffer_get_fill_size(s_audio_pcm_stream.i2s_tx_rb),
+								   false);
 			return BK_OK;
 		}
 
@@ -159,6 +190,16 @@ bk_err_t audio_play_pcm_i2s_write(uint8_t *data, uint32_t size, uint32_t timeout
 		{
 			BK_LOGW(TAG, "PCM write timeout, dropped %lu bytes\n",
 					(unsigned long)(size - total_written));
+			audio_play_log_i2s_ref(data,
+								   size,
+								   total_written,
+								   timeout_ms,
+								   rb_free_before,
+								   rb_fill_before,
+								   rb_capacity,
+								   ring_buffer_get_free_size(s_audio_pcm_stream.i2s_tx_rb),
+								   ring_buffer_get_fill_size(s_audio_pcm_stream.i2s_tx_rb),
+								   true);
 			return BK_FAIL;
 		}
 
@@ -219,6 +260,216 @@ static void audio_play_log_pcm_chunk(const uint8_t *data, uint32_t size, uint32_
 	// 		(written > 7U) ? data[7] : 0);
 }
 
+static uint32_t audio_play_abs_i32(int32_t value)
+{
+	if (value < 0)
+	{
+		return (uint32_t)(-value);
+	}
+
+	return (uint32_t)value;
+}
+
+static uint32_t audio_play_u32_from_le_bytes(const uint8_t *data)
+{
+	return ((uint32_t)data[0]) |
+		   ((uint32_t)data[1] << 8) |
+		   ((uint32_t)data[2] << 16) |
+		   ((uint32_t)data[3] << 24);
+}
+
+static void audio_play_log_i2s_ref(const uint8_t *data,
+								   uint32_t size,
+								   uint32_t written,
+								   uint32_t timeout_ms,
+								   uint32_t rb_free_before,
+								   uint32_t rb_fill_before,
+								   uint32_t rb_capacity,
+								   uint32_t rb_free_after,
+								   uint32_t rb_fill_after,
+								   bool force_log)
+{
+	const int16_t *samples;
+	uint32_t sample_count;
+	uint32_t word_count;
+	uint32_t index;
+	int16_t first_i16[8] = {0};
+	uint32_t first_u32[4] = {0};
+	int32_t min = 0;
+	int32_t max = 0;
+	uint64_t sum_abs = 0;
+	uint32_t avg_abs = 0;
+	uint32_t peak = 0;
+	uint32_t even_count = 0;
+	uint32_t odd_count = 0;
+	int32_t even_min = 0;
+	int32_t even_max = 0;
+	int32_t odd_min = 0;
+	int32_t odd_max = 0;
+	uint64_t even_sum_abs = 0;
+	uint64_t odd_sum_abs = 0;
+	uint32_t even_avg_abs = 0;
+	uint32_t odd_avg_abs = 0;
+	uint32_t even_peak = 0;
+	uint32_t odd_peak = 0;
+
+	if (data == NULL)
+	{
+		return;
+	}
+
+	if (!force_log)
+	{
+		s_audio_i2s_ref_log_counter++;
+		if ((s_audio_i2s_ref_log_counter % AUDIO_PLAY_I2S_REF_LOG_INTERVAL) != 0U)
+		{
+			return;
+		}
+	}
+
+	sample_count = size / 2U;
+	word_count = size / 4U;
+	samples = (const int16_t *)data;
+
+	for (index = 0; (index < sample_count) && (index < 8U); index++)
+	{
+		first_i16[index] = samples[index];
+	}
+
+	for (index = 0; (index < word_count) && (index < 4U); index++)
+	{
+		first_u32[index] = audio_play_u32_from_le_bytes(data + (index * 4U));
+	}
+
+	for (index = 0; index < sample_count; index++)
+	{
+		int32_t value = samples[index];
+		uint32_t abs_value = audio_play_abs_i32(value);
+
+		if (index == 0U)
+		{
+			min = value;
+			max = value;
+		}
+		else
+		{
+			if (value < min)
+			{
+				min = value;
+			}
+			if (value > max)
+			{
+				max = value;
+			}
+		}
+
+		sum_abs += abs_value;
+
+		if ((index & 1U) == 0U)
+		{
+			if (even_count == 0U)
+			{
+				even_min = value;
+				even_max = value;
+			}
+			else
+			{
+				if (value < even_min)
+				{
+					even_min = value;
+				}
+				if (value > even_max)
+				{
+					even_max = value;
+				}
+			}
+			even_sum_abs += abs_value;
+			even_count++;
+		}
+		else
+		{
+			if (odd_count == 0U)
+			{
+				odd_min = value;
+				odd_max = value;
+			}
+			else
+			{
+				if (value < odd_min)
+				{
+					odd_min = value;
+				}
+				if (value > odd_max)
+				{
+					odd_max = value;
+				}
+			}
+			odd_sum_abs += abs_value;
+			odd_count++;
+		}
+	}
+
+	if (sample_count > 0U)
+	{
+		avg_abs = (uint32_t)(sum_abs / sample_count);
+		peak = (audio_play_abs_i32(min) > audio_play_abs_i32(max)) ? audio_play_abs_i32(min) : audio_play_abs_i32(max);
+	}
+
+	if (even_count > 0U)
+	{
+		even_avg_abs = (uint32_t)(even_sum_abs / even_count);
+		even_peak = (audio_play_abs_i32(even_min) > audio_play_abs_i32(even_max)) ? audio_play_abs_i32(even_min) : audio_play_abs_i32(even_max);
+	}
+
+	if (odd_count > 0U)
+	{
+		odd_avg_abs = (uint32_t)(odd_sum_abs / odd_count);
+		odd_peak = (audio_play_abs_i32(odd_min) > audio_play_abs_i32(odd_max)) ? audio_play_abs_i32(odd_min) : audio_play_abs_i32(odd_max);
+	}
+
+	BK_LOGW(TAG,
+			"[I2S_REF] size=%lu sample_count=%lu sample_rate=%lu channels=%u bits_per_sample=%u store_mode=%lu rb_free_before=%lu rb_fill_before=%lu rb_capacity=%lu timeout_ms=%lu written=%lu rb_free_after=%lu rb_fill_after=%lu first_i16=[%d,%d,%d,%d,%d,%d,%d,%d] first_u32=[0x%08lX,0x%08lX,0x%08lX,0x%08lX] all[min,max,avg_abs,peak]=[%ld,%ld,%lu,%lu] even[count,min,max,avg_abs,peak]=[%lu,%ld,%ld,%lu,%lu] odd[count,min,max,avg_abs,peak]=[%lu,%ld,%ld,%lu,%lu]\n",
+			(unsigned long)size,
+			(unsigned long)sample_count,
+			(unsigned long)s_audio_pcm_stream.sample_rate,
+			s_audio_pcm_stream.channels,
+			s_audio_pcm_stream.bits_per_sample,
+			(unsigned long)AUDIO_PLAY_I2S_STORE_MODE,
+			(unsigned long)rb_free_before,
+			(unsigned long)rb_fill_before,
+			(unsigned long)rb_capacity,
+			(unsigned long)timeout_ms,
+			(unsigned long)written,
+			(unsigned long)rb_free_after,
+			(unsigned long)rb_fill_after,
+			first_i16[0],
+			first_i16[1],
+			first_i16[2],
+			first_i16[3],
+			first_i16[4],
+			first_i16[5],
+			first_i16[6],
+			first_i16[7],
+			(unsigned long)first_u32[0],
+			(unsigned long)first_u32[1],
+			(unsigned long)first_u32[2],
+			(unsigned long)first_u32[3],
+			(long)min,
+			(long)max,
+			(unsigned long)avg_abs,
+			(unsigned long)peak,
+			(unsigned long)even_count,
+			(long)even_min,
+			(long)even_max,
+			(unsigned long)even_avg_abs,
+			(unsigned long)even_peak,
+			(unsigned long)odd_count,
+			(long)odd_min,
+			(long)odd_max,
+			(unsigned long)odd_avg_abs,
+			(unsigned long)odd_peak);
+}
+
 bk_err_t audio_play_pcm_i2s_stop(void)
 {
 	if (!s_audio_pcm_stream.started)
@@ -259,7 +510,7 @@ bk_err_t audio_play_i2s_direct_start(uint32_t sample_rate)
 	i2s_config.work_mode = I2S_WORK_MODE_I2S;
 	i2s_config.samp_rate = I2S_SAMP_RATE_44100;
 	i2s_config.data_length = 16;
-	i2s_config.store_mode = I2S_LRCOM_STORE_16R16L;
+	i2s_config.store_mode = AUDIO_PLAY_I2S_STORE_MODE;
 
 	ret = bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);
 	if (ret != BK_OK)
@@ -417,7 +668,7 @@ static bk_err_t audio_play_i2s_hw_start(uint32_t sample_rate, RingBufferContext 
 	i2s_config.work_mode = I2S_WORK_MODE_I2S;
 	i2s_config.samp_rate = I2S_SAMP_RATE_44100;
 	i2s_config.data_length = 16;
-	i2s_config.store_mode = I2S_LRCOM_STORE_16R16L;
+	i2s_config.store_mode = AUDIO_PLAY_I2S_STORE_MODE;
 
 	ret = bk_i2s_init(I2S_GPIO_GROUP_2, &i2s_config);
 	if (ret != BK_OK)
