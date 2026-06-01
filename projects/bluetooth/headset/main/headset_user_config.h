@@ -15,7 +15,7 @@
 
 #define CONFIG_A2DP_AUDIO
 
-#define BT_AUDIO_SINK_DEMO_MSG_COUNT          (60)
+#define BT_AUDIO_SINK_DEMO_MSG_COUNT          (180)
 
 #define LOCAL_NAME "soundbar"
 

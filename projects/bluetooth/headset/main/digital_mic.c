@@ -38,8 +38,8 @@
 #define DIGITAL_MIC_DMA_WORDS (DIGITAL_MIC_PCM_BLOCK_WORDS * 2U)
 #define DIGITAL_MIC_DMA_START_TIMEOUT_POLLS 1000U
 #define DIGITAL_MIC_DIRECT_DMA_TO_I2S 0U
-#define DIGITAL_MIC_DIRECT_CPU_TO_I2S 1U
-#define DIGITAL_MIC_USE_DMA 0U
+#define DIGITAL_MIC_DIRECT_CPU_TO_I2S 0U
+#define DIGITAL_MIC_USE_DMA 1U
 #define DIGITAL_MIC_I2S_CHANNELS 2U
 #define DIGITAL_MIC_I2S_BITS_PER_SAMPLE 16U
 #define DIGITAL_MIC_PLAYBACK_RATE_MULTIPLIER 1U
@@ -47,15 +47,15 @@
 #define DIGITAL_MIC_FILTER_ENABLE 0U
 #define DIGITAL_MIC_STATS_ENABLE 1U
 #define DIGITAL_MIC_STATS_DECIMATE_MASK 0x0FU
-#define DIGITAL_MIC_FAST_MONO_ENABLE 1U
+#define DIGITAL_MIC_FAST_MONO_ENABLE 0U
 #define DIGITAL_MIC_FIFO_EMPTY_YIELD_INTERVAL 64U
 #define DIGITAL_MIC_HPF_ALPHA_Q15 31130
 #define DIGITAL_MIC_FAST_HPF_ALPHA_Q15 30500
 #define DIGITAL_MIC_LPF_ALPHA_Q15 32767
 #define DIGITAL_MIC_NOISE_GATE_THRESHOLD 0
-#define DIGITAL_MIC_OUTPUT_GAIN_Q8 (8 * 256)
-#define DIGITAL_MIC_OUTPUT_CHANNEL 1U
-#define DIGITAL_MIC_OUTPUT_DC_OFFSET 0
+#define DIGITAL_MIC_OUTPUT_GAIN_Q8 (2 * 256)
+#define DIGITAL_MIC_OUTPUT_CHANNEL 0U
+#define DIGITAL_MIC_OUTPUT_DC_OFFSET 115
 
 typedef struct
 {
@@ -98,12 +98,17 @@ typedef struct
 static digital_mic_ctx_t s_dmic;
 static digital_mic_filter_state_t s_filter_state[2];
 static digital_mic_filter_state_t s_fast_filter_state;
+static int32_t s_dmic_dc_est_q8;
 static digital_mic_audio_stats_t s_raw_stats;
 static digital_mic_audio_stats_t s_out_stats;
 static uint32_t s_raw_stats_decimate;
 static uint32_t s_out_stats_decimate;
 static uint32_t s_pcm_block[DIGITAL_MIC_PCM_BLOCK_WORDS];
 static uint32_t s_dmic_dma_buffer[DIGITAL_MIC_DMA_WORDS];
+static uint32_t s_i2s_frame_idx;
+static uint32_t s_i2s_last_start_tick;
+static uint32_t s_i2s_log_decimate;
+static uint32_t s_i2s_direct_log_decimate;
 
 static void digital_mic_dma_half_isr(dma_id_t dma_id)
 {
@@ -352,7 +357,17 @@ static uint32_t digital_mic_filter_word(uint32_t word)
 
     return (((uint32_t)(uint16_t)selected) << 16) | (uint16_t)selected;
 #else
-    return word;
+    int16_t low = (int16_t)(word & 0xFFFFU);
+    int32_t selected = low;
+    int32_t centered;
+
+    s_dmic_dc_est_q8 += ((selected << 8) - s_dmic_dc_est_q8) >> 8;
+    centered = selected - (s_dmic_dc_est_q8 >> 8);
+    centered -= DIGITAL_MIC_OUTPUT_DC_OFFSET;
+    selected = (centered * DIGITAL_MIC_OUTPUT_GAIN_Q8) >> 8;
+    selected = digital_mic_clip_sample(selected);
+
+    return (((uint32_t)(uint16_t)selected) << 16) | (uint16_t)selected;
 #endif
 }
 
@@ -419,6 +434,15 @@ static void digital_mic_log_status(const char *reason)
 static bk_err_t digital_mic_write_block(const uint32_t *words, uint32_t word_count)
 {
     uint32_t index;
+    bk_err_t ret;
+    uint32_t start_tick;
+    uint32_t end_tick;
+    uint32_t delta_prev;
+    uint32_t size_bytes;
+    int16_t first_l = 0;
+    int16_t first_r = 0;
+    int16_t last_l = 0;
+    int16_t last_r = 0;
 
     if ((words == NULL) || (word_count > DIGITAL_MIC_PCM_BLOCK_WORDS))
     {
@@ -432,9 +456,57 @@ static bk_err_t digital_mic_write_block(const uint32_t *words, uint32_t word_cou
         digital_mic_stats_add_word(&s_out_stats, s_pcm_block[index]);
     }
 
-    return audio_play_pcm_i2s_write((uint8_t *)s_pcm_block,
-                                    word_count * sizeof(uint32_t),
-                                    s_dmic.config.write_timeout_ms);
+    size_bytes = word_count * sizeof(uint32_t);
+    if (word_count > 0U)
+    {
+        uint32_t first = s_pcm_block[0];
+        uint32_t last = s_pcm_block[word_count - 1U];
+        first_l = (int16_t)(first & 0xFFFFU);
+        first_r = (int16_t)((first >> 16) & 0xFFFFU);
+        last_l = (int16_t)(last & 0xFFFFU);
+        last_r = (int16_t)((last >> 16) & 0xFFFFU);
+    }
+
+    start_tick = rtos_get_time();
+    ret = audio_play_pcm_i2s_write((uint8_t *)s_pcm_block,
+                                   size_bytes,
+                                   s_dmic.config.write_timeout_ms);
+    end_tick = rtos_get_time();
+    delta_prev = (s_i2s_last_start_tick == 0U) ? 0U : (start_tick - s_i2s_last_start_tick);
+    s_i2s_last_start_tick = start_tick;
+    s_i2s_frame_idx++;
+
+    if (ret != BK_OK)
+    {
+        LOGW("[DMIC_I2S_FRAME] frame=%lu size=%lu start=%lu end=%lu write_dt=%lu delta_prev=%lu ret=%d\r\n",
+             (unsigned long)s_i2s_frame_idx,
+             (unsigned long)size_bytes,
+             (unsigned long)start_tick,
+             (unsigned long)end_tick,
+             (unsigned long)(end_tick - start_tick),
+             (unsigned long)delta_prev,
+             ret);
+    }
+    else
+    {
+        s_i2s_log_decimate++;
+        if ((s_i2s_log_decimate % 20U) == 0U)
+        {
+            LOGW("[DMIC_I2S_FRAME] frame=%lu size=%lu start=%lu end=%lu write_dt=%lu delta_prev=%lu first_lr=%d,%d last_lr=%d,%d\r\n",
+                 (unsigned long)s_i2s_frame_idx,
+                 (unsigned long)size_bytes,
+                 (unsigned long)start_tick,
+                 (unsigned long)end_tick,
+                 (unsigned long)(end_tick - start_tick),
+                 (unsigned long)delta_prev,
+                 first_l,
+                 first_r,
+                 last_l,
+                 last_r);
+        }
+    }
+
+    return ret;
 }
 
 static uint32_t digital_mic_poll_fifo_block(uint32_t *block_words, uint32_t *last_sample)
@@ -499,7 +571,13 @@ static uint32_t digital_mic_poll_fifo_direct_i2s(uint32_t *last_sample)
     bk_err_t ret;
     uint32_t status = 0;
     uint32_t dmic_data = 0;
+    uint32_t out_data = 0;
     uint32_t read_count = 0;
+    uint32_t start_tick = rtos_get_time();
+    uint32_t end_tick;
+    uint32_t first_sample = 0;
+    uint32_t last_word = 0;
+    bool captured_first = false;
 
     ret = bk_aud_dmic_get_status(&status);
     if (ret != BK_OK)
@@ -524,7 +602,9 @@ static uint32_t digital_mic_poll_fifo_direct_i2s(uint32_t *last_sample)
             break;
         }
 
-        ret = audio_play_i2s_direct_write_word(dmic_data);
+        out_data = digital_mic_filter_word(dmic_data);
+
+        ret = audio_play_i2s_direct_write_word(out_data);
         if (ret != BK_OK)
         {
             LOGW("DMIC direct I2S write failed: %d words=%lu\r\n",
@@ -534,10 +614,40 @@ static uint32_t digital_mic_poll_fifo_direct_i2s(uint32_t *last_sample)
         }
 
         digital_mic_stats_add_word(&s_raw_stats, dmic_data);
-        digital_mic_stats_add_word(&s_out_stats, dmic_data);
+        digital_mic_stats_add_word(&s_out_stats, out_data);
         s_dmic.received_words++;
-        *last_sample = dmic_data;
+        *last_sample = out_data;
+        if (!captured_first)
+        {
+            first_sample = out_data;
+            captured_first = true;
+        }
+        last_word = out_data;
         read_count++;
+    }
+
+    end_tick = rtos_get_time();
+    if (read_count > 0U)
+    {
+        s_i2s_direct_log_decimate++;
+        if ((s_i2s_direct_log_decimate % 64U) == 0U)
+        {
+            int16_t first_l = (int16_t)(first_sample & 0xFFFFU);
+            int16_t first_r = (int16_t)((first_sample >> 16) & 0xFFFFU);
+            int16_t last_l = (int16_t)(last_word & 0xFFFFU);
+            int16_t last_r = (int16_t)((last_word >> 16) & 0xFFFFU);
+            LOGW("[DMIC_I2S_DIRECT] words=%lu start=%lu end=%lu dt=%lu first=0x%08lX last=0x%08lX first_lr=%d,%d last_lr=%d,%d\r\n",
+                 (unsigned long)read_count,
+                 (unsigned long)start_tick,
+                 (unsigned long)end_tick,
+                 (unsigned long)(end_tick - start_tick),
+                 (unsigned long)first_sample,
+                 (unsigned long)last_word,
+                 first_l,
+                 first_r,
+                 last_l,
+                 last_r);
+        }
     }
 
     return read_count;
@@ -717,8 +827,8 @@ static void digital_mic_task(void *arg)
         dma_config.chan_prio = 1;
         dma_config.src.dev = DMA_DEV_AUDIO;
         dma_config.src.width = DMA_DATA_WIDTH_32BITS;
-        dma_config.src.addr_inc_en = DMA_ADDR_INC_ENABLE;
-        dma_config.src.addr_loop_en = DMA_ADDR_LOOP_ENABLE;
+        dma_config.src.addr_inc_en = DMA_ADDR_INC_DISABLE;
+        dma_config.src.addr_loop_en = DMA_ADDR_LOOP_DISABLE;
         dma_config.src.start_addr = dmic_fifo_addr;
         dma_config.src.end_addr = dmic_fifo_addr + sizeof(uint32_t);
         dma_config.dst.width = DMA_DATA_WIDTH_32BITS;
@@ -1007,6 +1117,11 @@ bk_err_t digital_mic_start(const digital_mic_config_t *config)
     s_dmic.dma_started = false;
     s_dmic.dac_started = false;
     s_dmic.dmic_started = false;
+    s_i2s_frame_idx = 0;
+    s_i2s_last_start_tick = 0;
+    s_i2s_log_decimate = 0;
+    s_i2s_direct_log_decimate = 0;
+    s_dmic_dc_est_q8 = 0;
 
     if (s_dmic.config.sample_rate == 0U)
     {

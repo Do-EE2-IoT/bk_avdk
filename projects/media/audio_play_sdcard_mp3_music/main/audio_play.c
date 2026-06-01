@@ -33,6 +33,8 @@
 #define I2S_DMA_SEM_MAX_COUNT 8
 #define I2S_RB_LOW_WATERMARK_SIZE (I2S_TX_RING_BUFFER_SIZE / 4)
 #define I2S_FRAME_LOG_INTERVAL 32
+#define AUDIO_SW_GAIN_NUMERATOR 1
+#define AUDIO_SW_GAIN_DENOMINATOR 10
 
 
 typedef struct {
@@ -69,6 +71,7 @@ static bk_err_t audio_play_i2s_hw_init(uint32_t sample_rate, RingBufferContext *
 static bk_err_t audio_play_i2s_dma_start(void);
 static void audio_play_i2s_hw_stop(void);
 static uint32_t audio_decode_fill_until_full(void);
+static void audio_apply_gain_1_10(int16_t *samples, uint32_t sample_count);
 
 static i2s_samp_rate_t get_i2s_sample_rate(uint32_t mp3_rate)
 {
@@ -158,6 +161,18 @@ static bk_err_t tf_unmount(void)
 	return BK_OK;
 }
 
+static void audio_apply_gain_1_10(int16_t *samples, uint32_t sample_count)
+{
+	if (samples == NULL) {
+		return;
+	}
+
+	for (uint32_t index = 0; index < sample_count; ++index) {
+		samples[index] = (int16_t)(((int32_t)samples[index] * AUDIO_SW_GAIN_NUMERATOR) /
+								   AUDIO_SW_GAIN_DENOMINATOR);
+	}
+}
+
 
 static bk_err_t mp3_decode_handler(unsigned int size)
 {
@@ -225,6 +240,10 @@ static bk_err_t mp3_decode_handler(unsigned int size)
 //		os_printf("Bitrate: %d kb/s, Samprate: %d\r\n", (mp3FrameInfo.bitrate) / 1000, mp3FrameInfo.samprate);
 //		os_printf("Channel: %d, Version: %d, Layer: %d\r\n", mp3FrameInfo.nChans, mp3FrameInfo.version, mp3FrameInfo.layer);
 //		os_printf("OutputSamps: %d\r\n", mp3FrameInfo.outputSamps);
+
+
+		audio_apply_gain_1_10((int16_t *)audio_play_info->pcmBuf,
+							   audio_play_info->mp3FrameInfo.outputSamps);
 
 		uint32_t pcm_size = audio_play_info->mp3FrameInfo.outputSamps * 2;
 		uint8_t *write_ptr = (uint8_t *)audio_play_info->pcmBuf;

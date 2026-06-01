@@ -147,6 +147,9 @@ static beken_semaphore_t s_bt_api_event_cb_sema = NULL;
 static beken_semaphore_t s_bt_avrcp_event_cb_sema = NULL;
 extern float gain;
 
+static uint32_t s_a2dp_data_q_push_fail = 0;
+static uint32_t s_a2dp_sbc_invalid_pkt = 0;
+
 static bk_err_t bk_bt_dac_set_gain(uint8_t dac_gain)
 {
     gain = ((float)dac_gain) / 127.0f;
@@ -343,6 +346,17 @@ void bt_audio_sink_demo_main(void *arg)
                         uint8_t payload_header = *fb++;
                         uint8_t frame_num = payload_header & 0xF;
 
+                        if (frame_num == 0 || msg.len <= 1)
+                        {
+                            s_a2dp_sbc_invalid_pkt++;
+                            if ((s_a2dp_sbc_invalid_pkt % 20) == 1)
+                            {
+                                LOGW("[A2DP_SBC] invalid packet hdr=0x%02X len=%u invalid=%lu\n",
+                                     payload_header, msg.len, s_a2dp_sbc_invalid_pkt);
+                            }
+                            break;
+                        }
+
                         if (msg.len - 1 != frame_length * frame_num)
                         {
                             // LOGI("recv undef sbc, payload_header %d, payload_len: %d, frame_num:%d %d\n", payload_header, msg.len - 1, frame_num, frame_length);
@@ -350,7 +364,13 @@ void bt_audio_sink_demo_main(void *arg)
 
                         if ((msg.len - 1) % frame_num)
                         {
-                            LOGE("%s frame len invalid\n", __func__);
+                            s_a2dp_sbc_invalid_pkt++;
+                            if ((s_a2dp_sbc_invalid_pkt % 20) == 1)
+                            {
+                                LOGW("[A2DP_SBC] frame len invalid len=%u frame_num=%u invalid=%lu\n",
+                                     msg.len, frame_num, s_a2dp_sbc_invalid_pkt);
+                            }
+                            break;
                         }
 
                         for (uint8_t i = 0; i < frame_num; i++)
@@ -552,11 +572,16 @@ void bt_audio_sink_media_data_ind(const uint8_t *data, uint16_t data_len)
     demo_msg.type = BT_AUDIO_D2DP_DATA_IND_MSG;
     demo_msg.len = data_len;
 
-    rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
+    rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, 2);
 
     if (kNoErr != rc)
     {
-        LOGE("%s, send queue failed\r\n", __func__);
+        s_a2dp_data_q_push_fail++;
+        if ((s_a2dp_data_q_push_fail % 20) == 1)
+        {
+            LOGW("[A2DP_Q] data enqueue fail rc=%d len=%u fail=%lu\n",
+                 rc, data_len, s_a2dp_data_q_push_fail);
+        }
 
         if (demo_msg.data)
         {
