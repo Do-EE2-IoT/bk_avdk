@@ -121,60 +121,8 @@ int main(void)
 	os_printf("%s: media service init started!\n", __func__);
 #endif
 
-	// speaker_pa_enable();
-
-	// enable_gpio();
-	enable_gpio(GPIO_0);
-	enable_gpio(GPIO_1);
-	enable_gpio(GPIO_2);
-	enable_gpio(GPIO_3);
-	enable_gpio(GPIO_4);
-	enable_gpio(GPIO_5);
-	enable_gpio(GPIO_6);
-	enable_gpio(GPIO_7);
-	enable_gpio(GPIO_8);
-	enable_gpio(GPIO_9);
-
-	enable_gpio(GPIO_12);
-	enable_gpio(GPIO_13);
-	enable_gpio(GPIO_14);
-	enable_gpio(GPIO_15);
-
-	enable_gpio(GPIO_16);
-	enable_gpio(GPIO_17);
-	enable_gpio(GPIO_18);
-	enable_gpio(GPIO_19);
-
-	enable_gpio(GPIO_20);
-	enable_gpio(GPIO_21);
-	enable_gpio(GPIO_22);
-	enable_gpio(GPIO_23);
-	enable_gpio(GPIO_24);
-	enable_gpio(GPIO_25);
-	enable_gpio(GPIO_26);
+// Pin enable speaker
 	enable_gpio(GPIO_27);
-	enable_gpio(GPIO_28);
-	enable_gpio(GPIO_29);
-
-	enable_gpio(GPIO_30);
-	enable_gpio(GPIO_31);
-	enable_gpio(GPIO_32);
-	enable_gpio(GPIO_33);
-	enable_gpio(GPIO_34);
-	enable_gpio(GPIO_35);
-	enable_gpio(GPIO_36);
-	enable_gpio(GPIO_37);
-	enable_gpio(GPIO_38);
-	enable_gpio(GPIO_39);
-
-	enable_gpio(GPIO_40);
-	enable_gpio(GPIO_41);
-	enable_gpio(GPIO_42);
-	enable_gpio(GPIO_43);
-	enable_gpio(GPIO_44);
-	enable_gpio(GPIO_45);
-	enable_gpio(GPIO_46);
-	enable_gpio(GPIO_47);
 
 	return 0;
 }

@@ -22,6 +22,9 @@
 #include "gpio_driver.h"
 
 #define TAG "AUD_RECORD_SDCARD"
+#define SPK_DUMP_INITIAL_FRAMES 5
+#define SPK_DUMP_SAMPLES 16
+#define SPK_DUMP_HEARTBEAT_FRAMES 200
 
 // static FIL mic_file;
 // static char mic_file_name[50];
@@ -89,18 +92,27 @@ static int send_mic_data_to_sd(uint8_t *data, unsigned int len)
 {
     int16_t *pcm = (int16_t *)data;
     unsigned int samples = len / 2;
+    static uint32_t frame_count = 0;
 
-    for (unsigned int i = 0; i < samples; i++)
+    frame_count++;
+    if (frame_count <= SPK_DUMP_INITIAL_FRAMES)
     {
-        int32_t v = pcm[i] * 4; // x4 gain
+        unsigned int dump_samples = samples < SPK_DUMP_SAMPLES ? samples : SPK_DUMP_SAMPLES;
 
-        /* clamp chống overflow */
-        if (v > 32767)
-            v = 32767;
-        else if (v < -32768)
-            v = -32768;
-
-        pcm[i] = (int16_t)v;
+        os_printf("%s: spk frame=%lu len=%u samples=%u data:", TAG, (unsigned long)frame_count, len, samples);
+        for (unsigned int i = 0; i < dump_samples; i++)
+        {
+            os_printf(" %d", pcm[i]);
+        }
+        if (samples > dump_samples)
+        {
+            os_printf(" ...");
+        }
+        os_printf("\n");
+    }
+    else if ((frame_count % SPK_DUMP_HEARTBEAT_FRAMES) == 0)
+    {
+        os_printf("%s: spk frame=%lu len=%u samples=%u\n", TAG, (unsigned long)frame_count, len, samples);
     }
 
     bk_aud_intf_write_spk_data(data, len);
@@ -145,11 +157,11 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
         goto fail;
     }
 
-    // aud_intf_mic_setup.mic_chl = AUD_INTF_MIC_CHL_MIC1;
+    aud_intf_mic_setup.mic_chl = AUD_INTF_MIC_CHL_MIC1;
     aud_intf_mic_setup.samp_rate = samp_rate;
     // aud_intf_mic_setup.mic_type = AUD_INTF_MIC_TYPE_UAC;
     aud_intf_mic_setup.frame_size = 640;
-    // aud_intf_mic_setup.mic_gain = 0x2d;
+    aud_intf_mic_setup.mic_gain = 0x2d;
     ret = bk_aud_intf_mic_init(&aud_intf_mic_setup);
     if (ret != BK_ERR_AUD_INTF_OK)
     {
@@ -162,7 +174,7 @@ bk_err_t audio_record_to_sdcard_start(char *file_name, uint32_t samp_rate)
         aud_intf_spk_setup_t aud_intf_spk_setup = DEFAULT_AUD_INTF_SPK_SETUP_CONFIG();
         aud_intf_spk_setup.samp_rate = samp_rate;
         aud_intf_spk_setup.frame_size = aud_intf_mic_setup.frame_size;
-        aud_intf_spk_setup.spk_gain = 0x3d;
+        aud_intf_spk_setup.spk_gain = 0x2d;
 
         ret = bk_aud_intf_spk_init(&aud_intf_spk_setup);
         if (ret != BK_ERR_AUD_INTF_OK)
