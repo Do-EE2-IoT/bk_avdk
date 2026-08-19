@@ -6,10 +6,106 @@
 #include "audio_record.h"
 #include "media_service.h"
 
+#if (CONFIG_SYS_CPU0)
+#include <components/event.h>
+#include <components/log.h>
+#include <components/netif.h>
+#include <modules/wifi.h>
+#include <stdbool.h>
+#include <string.h>
+#endif
+
 #include "driver/gpio.h"
 #include "gpio_driver.h"
 
 #define SPEAKER_PA_PIN GPIO_50
+
+#if (CONFIG_SYS_CPU0)
+#define WIFI_SSID "LUMI"
+#define WIFI_PASSWORD "lumivn274"
+#define WIFI_CONNECT_TIMEOUT_MS 20000
+
+static beken_semaphore_t s_wifi_got_ip_sem = NULL;
+static volatile bool s_wifi_got_ip = false;
+
+static bk_err_t wifi_netif_event_cb(void *arg, event_module_t event_module, int event_id, void *event_data)
+{
+	(void)arg;
+	(void)event_module;
+
+	if (event_id == EVENT_NETIF_GOT_IP4)
+	{
+		netif_event_got_ip4_t *got_ip = (netif_event_got_ip4_t *)event_data;
+		if (got_ip->netif_if == NETIF_IF_STA)
+		{
+			s_wifi_got_ip = true;
+			os_printf("wifi: STA got ip\n");
+			if (s_wifi_got_ip_sem)
+				rtos_set_semaphore(&s_wifi_got_ip_sem);
+		}
+	}
+
+	return BK_OK;
+}
+
+static bk_err_t wifi_event_cb(void *arg, event_module_t event_module, int event_id, void *event_data)
+{
+	(void)arg;
+	(void)event_module;
+
+	switch (event_id)
+	{
+	case EVENT_WIFI_STA_CONNECTED:
+	{
+		wifi_event_sta_connected_t *sta_connected = (wifi_event_sta_connected_t *)event_data;
+		os_printf("wifi: STA connected to %s\n", sta_connected->ssid);
+		break;
+	}
+	case EVENT_WIFI_STA_DISCONNECTED:
+	{
+		wifi_event_sta_disconnected_t *sta_disconnected = (wifi_event_sta_disconnected_t *)event_data;
+		s_wifi_got_ip = false;
+		os_printf("wifi: STA disconnected, reason=%d\n", sta_disconnected->disconnect_reason);
+		break;
+	}
+	default:
+		break;
+	}
+
+	return BK_OK;
+}
+
+static void wifi_sta_connect(void)
+{
+	wifi_sta_config_t sta_config = WIFI_DEFAULT_STA_CONFIG();
+	bk_err_t ret;
+
+	if (s_wifi_got_ip_sem == NULL)
+		rtos_init_semaphore(&s_wifi_got_ip_sem, 1);
+
+	ret = bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, wifi_event_cb, NULL);
+	if ((ret != BK_OK) && (ret != BK_ERR_EVENT_CB_EXIST))
+		os_printf("wifi: register wifi event fail, ret=%d\n", ret);
+
+	ret = bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, wifi_netif_event_cb, NULL);
+	if ((ret != BK_OK) && (ret != BK_ERR_EVENT_CB_EXIST))
+		os_printf("wifi: register netif event fail, ret=%d\n", ret);
+
+	strncpy(sta_config.ssid, WIFI_SSID, WIFI_SSID_STR_LEN);
+	strncpy(sta_config.password, WIFI_PASSWORD, WIFI_PASSWORD_LEN);
+
+	os_printf("wifi: connecting ssid=%s\n", sta_config.ssid);
+	BK_LOG_ON_ERR(bk_wifi_sta_set_config(&sta_config));
+	BK_LOG_ON_ERR(bk_wifi_sta_start());
+
+	if (!s_wifi_got_ip && s_wifi_got_ip_sem)
+	{
+		ret = rtos_get_semaphore(&s_wifi_got_ip_sem, WIFI_CONNECT_TIMEOUT_MS);
+		if (ret != BK_OK)
+			os_printf("wifi: wait got ip timeout, audio stream will retry http connect\n");
+	}
+}
+#endif
 
 void speaker_pa_enable(void)
 {
@@ -111,6 +207,9 @@ int main(void)
 	bk_init();
 	int media_service_init(void);
 	media_service_init();
+#if (CONFIG_SYS_CPU0)
+	wifi_sta_connect();
+#endif
 
 #if (CONFIG_SYS_CPU0)
 	if (BK_OK != audio_record_to_sdcard_start("test.mp3", 16000))
@@ -121,8 +220,8 @@ int main(void)
 	os_printf("%s: media service init started!\n", __func__);
 #endif
 
-// Pin enable speaker
-	enable_gpio(GPIO_27);
+// Pin enable speakeraP
+	//enable_gpio(GPIO_27);
 
 	return 0;
 }

@@ -8,6 +8,7 @@ set(srcs
 
 if (CONFIG_SYS_CPU0)
 list(APPEND srcs
+	audio_http_stream.c
 	audio_record.c
 )
 endif()
@@ -21,4 +22,4 @@ endif()
 armino_component_register(
 	SRCS "${srcs}"
 	INCLUDE_DIRS "${incs}"
-	PRIV_REQUIRES media bk_init bk_cli avdk_libs media_service multimedia)
+	PRIV_REQUIRES media bk_init bk_cli avdk_libs media_service multimedia lwip_intf_v2_1)
